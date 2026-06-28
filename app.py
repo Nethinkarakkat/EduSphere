@@ -328,6 +328,173 @@ def migrate_db():
 # ── Init DB ────────────────────────────────────────────────────────────────
 def init_db():
     db_path = os.path.join(os.path.dirname(__file__), 'instance', 'database.db')
+    
+    # Check if database file exists
+    db_exists = os.path.exists(db_path)
+    
+    # If database doesn't exist, create fresh database with schema and default admin
+    if not db_exists:
+        conn = sqlite3.connect(db_path)
+        c = conn.cursor()
+        
+        # Create users table with all columns
+        c.execute("""
+            CREATE TABLE users(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                email TEXT UNIQUE,
+                password TEXT,
+                role TEXT,
+                approved INTEGER DEFAULT 1,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                profile_picture TEXT DEFAULT NULL,
+                phone TEXT DEFAULT NULL,
+                department TEXT DEFAULT '',
+                last_login DATETIME,
+                date_of_birth TEXT DEFAULT NULL,
+                gender TEXT DEFAULT NULL,
+                last_profile_update DATETIME DEFAULT NULL,
+                faculty_id TEXT DEFAULT NULL,
+                designation TEXT DEFAULT NULL,
+                subject TEXT DEFAULT NULL,
+                admin_id TEXT DEFAULT NULL,
+                role_level TEXT DEFAULT NULL,
+                reg_number TEXT DEFAULT NULL,
+                program TEXT DEFAULT NULL,
+                section TEXT DEFAULT NULL,
+                profile_completed INTEGER DEFAULT 0,
+                theme_preference TEXT DEFAULT 'light'
+            )
+        """)
+        
+        # Create exams table
+        c.execute("""
+            CREATE TABLE exams(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                title TEXT,
+                faculty_id INTEGER,
+                duration INTEGER,
+                exam_date TEXT,
+                subject TEXT DEFAULT '',
+                published INTEGER DEFAULT 0,
+                launched INTEGER DEFAULT 0,
+                classroom_id INTEGER DEFAULT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create questions table
+        c.execute("""
+            CREATE TABLE questions(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                exam_id INTEGER,
+                question TEXT,
+                option1 TEXT,
+                option2 TEXT,
+                option3 TEXT,
+                option4 TEXT,
+                correct_answer TEXT,
+                difficulty TEXT DEFAULT 'medium'
+            )
+        """)
+        
+        # Create question_bank table
+        c.execute("""
+            CREATE TABLE question_bank(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                question TEXT,
+                option1 TEXT,
+                option2 TEXT,
+                option3 TEXT,
+                option4 TEXT,
+                correct_answer TEXT,
+                category TEXT,
+                difficulty TEXT DEFAULT 'medium',
+                faculty_id INTEGER
+            )
+        """)
+        
+        # Create submissions table
+        c.execute("""
+            CREATE TABLE submissions(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER,
+                exam_id INTEGER,
+                score INTEGER,
+                tab_switches INTEGER DEFAULT 0,
+                submitted_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create activity_log table
+        c.execute("""
+            CREATE TABLE activity_log(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER,
+                action TEXT,
+                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create submission_answers table
+        c.execute("""
+            CREATE TABLE submission_answers(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                submission_id INTEGER,
+                question_id INTEGER,
+                student_answer TEXT DEFAULT ''
+            )
+        """)
+        
+        # Create classrooms table
+        c.execute("""
+            CREATE TABLE classrooms(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT,
+                subject TEXT DEFAULT '',
+                code TEXT UNIQUE,
+                faculty_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create classroom_members table
+        c.execute("""
+            CREATE TABLE classroom_members(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                classroom_id INTEGER,
+                student_id INTEGER,
+                joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(classroom_id, student_id)
+            )
+        """)
+        
+        # Create exam_attempts table
+        c.execute("""
+            CREATE TABLE exam_attempts(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                student_id INTEGER,
+                exam_id INTEGER,
+                current_question INTEGER DEFAULT 0,
+                remaining_time INTEGER DEFAULT 0,
+                answers TEXT DEFAULT '{}',
+                last_saved DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, exam_id)
+            )
+        """)
+        
+        # Create default admin account
+        admin_password = generate_password_hash("Admin@123")
+        c.execute(
+            "INSERT INTO users(name, email, password, role, approved, profile_completed) VALUES(?,?,?,?,?,?)",
+            ("Admin", "admin@edusphere.com", admin_password, "admin", 1, 1)
+        )
+        
+        conn.commit()
+        conn.close()
+        return
+    
+    # If database exists, run migration logic
     conn = sqlite3.connect(db_path); c = conn.cursor()
     # Check if email column has UNIQUE constraint, add it if missing
     c.execute("PRAGMA table_info(users)")

@@ -33,12 +33,13 @@ ENV/
 .env.*.local
 
 # Database
-*.db
+# Keep instance/database.db for production deployment
+# Ignore other database files
+database.db
+database_backup.db
+edusphere.db
 *.sqlite
 *.sqlite3
-instance/
-database.db
-edusphere.db
 
 # IDE
 .vscode/
@@ -68,8 +69,13 @@ temp/
 *.tmp
 
 # Uploads (keep structure but ignore content)
-static/uploads/*
+static/uploads/*.jpg
+static/uploads/*.jpeg
+static/uploads/*.png
+static/uploads/*.gif
+static/uploads/*.webp
 !static/uploads/.gitkeep
+!static/uploads/profiles/.gitkeep
 
 # OS
 .DS_Store
