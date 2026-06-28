@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>EduSphere — Login</title>
+  <!-- CRITICAL: Load ThemeManager BEFORE CSS to prevent theme flash -->
+  <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+</head>
+<body>
+<div class="auth-wrap">
+
+  <div class="auth-panel">
+    <div class="auth-panel-content">
+      <div class="auth-logo-section">
+        <div class="auth-logo-row">
+          <img src="{{ url_for('static', filename='images/logo.png') }}" alt="EduSphere Logo" class="auth-logo-img">
+          <div class="auth-logo-text-container">
+            <div class="auth-logo-text">EduSphere</div>
+            <div class="auth-logo-subtext">Examination System</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="auth-welcome-section">
+        <h1>Welcome to EduSphere</h1>
+        <p>Smart Examination System</p>
+        <p class="auth-welcome-subtitle">A secure and smart examination platform for students and faculty.</p>
+      </div>
+
+      <div class="auth-illustration-section">
+        <svg class="auth-illustration" viewBox="0 0 400 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <!-- Laptop -->
+          <rect x="60" y="100" width="280" height="160" rx="8" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+          <rect x="75" y="115" width="250" height="130" rx="4" fill="rgba(79,70,229,0.2)"/>
+          <!-- Screen content - checklist -->
+          <rect x="90" y="130" width="40" height="6" rx="3" fill="rgba(255,255,255,0.4)"/>
+          <rect x="90" y="145" width="60" height="6" rx="3" fill="rgba(255,255,255,0.3)"/>
+          <rect x="90" y="160" width="50" height="6" rx="3" fill="rgba(255,255,255,0.3)"/>
+          <rect x="90" y="175" width="70" height="6" rx="3" fill="rgba(255,255,255,0.3)"/>
+          <rect x="90" y="190" width="45" height="6" rx="3" fill="rgba(255,255,255,0.3)"/>
+          <rect x="90" y="205" width="55" height="6" rx="3" fill="rgba(255,255,255,0.3)"/>
+          <!-- Checkmarks -->
+          <circle cx="280" cy="133" r="8" fill="rgba(34,197,94,0.4)"/>
+          <path d="M276 133 L279 136 L284 130" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="280" cy="148" r="8" fill="rgba(34,197,94,0.4)"/>
+          <path d="M276 148 L279 151 L284 145" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="280" cy="163" r="8" fill="rgba(34,197,94,0.4)"/>
+          <path d="M276 163 L279 166 L284 160" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <!-- Laptop base -->
+          <rect x="40" y="265" width="320" height="12" rx="4" fill="rgba(255,255,255,0.2)"/>
+          
+          <!-- Graduation Cap -->
+          <ellipse cx="320" cy="70" rx="35" ry="12" fill="rgba(255,255,255,0.15)"/>
+          <rect x="290" y="45" width="60" height="25" rx="2" fill="rgba(79,70,229,0.4)"/>
+          <rect x="285" y="40" width="70" height="8" rx="2" fill="rgba(255,255,255,0.3)"/>
+          <circle cx="320" cy="44" r="4" fill="rgba(255,255,255,0.4)"/>
+          <line x1="320" y1="44" x2="320" y2="70" stroke="rgba(255,255,255,0.3)" stroke-width="2"/>
+          
+          <!-- Books stack -->
+          <rect x="50" y="240" width="70" height="15" rx="2" fill="rgba(59,130,246,0.4)" transform="rotate(-5 85 247.5)"/>
+          <rect x="55" y="225" width="65" height="15" rx="2" fill="rgba(139,92,246,0.4)" transform="rotate(-3 87.5 232.5)"/>
+          <rect x="60" y="210" width="60" height="15" rx="2" fill="rgba(236,72,153,0.4)" transform="rotate(-1 90 217.5)"/>
+          
+          <!-- Plant -->
+          <rect x="330" y="230" width="25" height="30" rx="3" fill="rgba(255,255,255,0.2)"/>
+          <path d="M342 230 Q350 210 360 220 Q355 200 342 215" fill="rgba(34,197,94,0.4)"/>
+          <path d="M342 230 Q330 210 320 220 Q325 200 342 215" fill="rgba(34,197,94,0.4)"/>
+          <path d="M342 230 Q342 200 342 190" stroke="rgba(34,197,94,0.5)" stroke-width="2"/>
+          <ellipse cx="342" cy="188" rx="8" ry="4" fill="rgba(34,197,94,0.4)"/>
+          
+          <!-- Decorative circles -->
+          <circle cx="80" cy="80" r="25" fill="rgba(79,70,229,0.15)"/>
+          <circle cx="350" cy="150" r="18" fill="rgba(59,130,246,0.15)"/>
+          <circle cx="120" cy="280" r="15" fill="rgba(139,92,246,0.15)"/>
+        </svg>
+      </div>
+
+      <div class="auth-features">
+        <div class="auth-feat-card">
+          <div class="auth-feat-ico">🔒</div>
+          <div class="auth-feat-title">Secure</div>
+          <div class="auth-feat-desc">Your data is protected.</div>
+        </div>
+        <div class="auth-feat-card">
+          <div class="auth-feat-ico">⚡</div>
+          <div class="auth-feat-title">Smart</div>
+          <div class="auth-feat-desc">Efficient exams and analytics.</div>
+        </div>
+        <div class="auth-feat-card">
+          <div class="auth-feat-ico">✨</div>
+          <div class="auth-feat-title">Seamless</div>
+          <div class="auth-feat-desc">Simple experience for everyone.</div>
+        </div>
+      </div>
+
+      <div class="auth-footer">
+        © 2026 EduSphere. All rights reserved.
+      </div>
+    </div>
+  </div>
+
+  <div class="auth-form-side">
+    <div class="auth-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+        <h2 style="margin:0;">Welcome back</h2>
+        <button id="themeToggle" class="btn btn-ghost btn-sm" onclick="window.themeManager.toggleTheme()" title="Toggle Theme">
+          <i class="bi bi-moon-stars" id="themeIcon"></i>
+        </button>
+      </div>
+      <p class="sub">Sign in to your account to continue</p>
+
+      {% if error %}
+      <div class="alert alert-danger"><i class="bi bi-exclamation-circle-fill"></i> {{ error }}</div>
+      {% endif %}
+
+      <form method="POST" action="/login" id="loginForm">
+        <div class="form-group">
+          <label class="form-label">Login as</label>
+          <select name="role" class="form-control" required>
+            <option value="">Select role</option>
+            <option value="admin">Admin</option>
+            <option value="faculty">Faculty</option>
+            <option value="student">Student</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email address</label>
+          <input type="email" name="email" class="form-control" placeholder="Your email" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Password</label>
+          <input type="password" name="password" class="form-control" placeholder="Your password" required>
+        </div>
+        <div class="form-group">
+          <label class="form-check">
+            <input type="checkbox" name="remember" class="form-check-input">
+            <span class="form-check-label">Remember me</span>
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full btn-lg">
+          <i class="bi bi-box-arrow-in-right"></i> Sign In
+        </button>
+      </form>
+
+      <hr class="div">
+      <p class="text-center text-sm text-muted">
+        No account? <a href="/signup" style="color:var(--primary);font-weight:600;">Create one</a>
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<!-- ThemeManager handles icon sync automatically -->
+
+</body>
+</html>

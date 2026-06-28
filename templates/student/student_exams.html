@@ -1,0 +1,100 @@
+{% extends "components/base.html" %}
+{% block title %}My Exams — EduSphere{% endblock %}
+{% block page_title %}My Exams{% endblock %}
+{% block page_sub %}Available and completed exams{% endblock %}
+{% block topbar_actions %}
+  <a href="/student" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Available Exams -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-rocket-takeoff-fill" style="color:var(--primary);margin-right:6px;"></i>Available Exams</h5>
+  </div>
+  <div class="card-body">
+    {% if available_exams %}
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Exam Title</th><th>Subject</th><th>Classroom</th><th>Faculty</th><th>Date</th><th>Duration</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for e in available_exams %}
+          <tr>
+            <td class="font-semi">{{ e.title }}</td>
+            <td>{{ e.subject or '—' }}</td>
+            <td>{{ e.classroom_name }}</td>
+            <td>{{ e.faculty_name }}</td>
+            <td>{{ e.exam_date }}</td>
+            <td>{{ e.duration }} min</td>
+            <td>
+              <a href="/exam_instructions/{{ e.id }}" class="btn btn-primary btn-sm" style="text-decoration:none;">Start Exam</a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:32px;color:var(--muted);">
+      <i class="bi bi-rocket-takeoff" style="font-size:36px;margin-bottom:12px;display:block;"></i>
+      <div style="font-size:14px;">No available exams. Check back later.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Completed Exams -->
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-check-circle-fill" style="color:var(--success);margin-right:6px;"></i>Completed Exams</h5>
+  </div>
+  <div class="card-body">
+    {% if completed_exams %}
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Exam Title</th><th>Subject</th><th>Classroom</th><th>Faculty</th><th>Date</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for e in completed_exams %}
+          <tr>
+            <td class="font-semi">{{ e.title }}</td>
+            <td>{{ e.subject or '—' }}</td>
+            <td>{{ e.classroom_name }}</td>
+            <td>{{ e.faculty_name }}</td>
+            <td>{{ e.submitted_at[:10] if e.submitted_at else '—' }}</td>
+            <td>
+              {% if e.result_published == 1 %}
+              <span class="font-bold" style="color:var(--primary);">{{ e.score }}</span>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if e.result_published == 1 %}
+              <span class="badge bdg-success">Published</span>
+              {% else %}
+              <span class="badge bdg-warning">Pending</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if e.result_published == 1 %}
+              <a href="/view_result/{{ e.id }}" class="btn btn-outline btn-sm" style="text-decoration:none;">View Result</a>
+              {% else %}
+              <span class="text-muted text-sm">Awaiting publication</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:32px;color:var(--muted);">
+      <i class="bi bi-check-circle" style="font-size:36px;margin-bottom:12px;display:block;"></i>
+      <div style="font-size:14px;">No completed exams yet.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends "components/base.html" %}
+{% block title %}View Questions — EduSphere{% endblock %}
+{% block page_title %}Exam Questions{% endblock %}
+{% block topbar_actions %}
+  {% if exam and exam.published == 0 and exam.launched == 1 %}
+  <a href="/publish_results/{{ exam_id }}" class="btn btn-success btn-sm"
+     onclick="return confirm('Publish results for this exam? Students will be able to view their scores.')">
+    <i class="bi bi-check-circle"></i> Publish Results
+  </a>
+  {% endif %}
+  <a href="{{ request.referrer or ('/admin' if session.get('role') == 'admin' else '/faculty') }}" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-list-ol" style="color:var(--primary);margin-right:6px;"></i>Questions</h5>
+    <div class="flex gap-2">
+      <span class="badge bdg-gray">{{ questions|length }} total</span>
+      <span class="badge bdg-primary">{{ questions|sum(attribute='marks') or questions|length }} marks</span>
+    </div>
+  </div>
+
+  {% if questions %}
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead>
+        <tr><th>#</th><th>Question</th><th>Options</th><th>Answer</th><th>Action</th></tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td style="max-width:260px;">{{ q.question }}</td>
+          <td style="font-size:12px;color:var(--text-muted);line-height:1.8;">
+            A. {{ q.option1 }}<br>
+            B. {{ q.option2 }}<br>
+            C. {{ q.option3 }}<br>
+            D. {{ q.option4 }}
+          </td>
+          <td><span class="correct-answer"><span class="correct-answer-label">Answer:</span><span class="correct-answer-text">{{ q.correct_answer }}</span></span></td>
+          <td>
+            <a href="/delete_question/{{ q.id }}/{{ q.exam_id }}" class="btn btn-danger btn-sm"
+               onclick="return confirm('Delete this question?')">
+              <i class="bi bi-trash"></i>
+            </a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty">
+    <i class="bi bi-question-circle"></i>
+    <p>No questions added yet.</p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

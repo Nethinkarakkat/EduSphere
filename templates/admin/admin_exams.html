@@ -1,0 +1,69 @@
+{% extends "components/base.html" %}
+{% block title %}Exams — EduSphere{% endblock %}
+{% block page_title %}Exams{% endblock %}
+{% block page_sub %}View all exams{% endblock %}
+{% block topbar_actions %}
+{% endblock %}
+
+{% block content %}
+
+<!-- Filters -->
+<div class="card mb-5">
+  <div class="card-body">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="min-width:130px;">
+        <div class="form-label">Status</div>
+        <select name="status" class="form-control">
+          <option value="">All Status</option>
+          <option value="draft" {% if status_f=='draft' %}selected{% endif %}>Draft</option>
+          <option value="published" {% if status_f=='published' %}selected{% endif %}>Published</option>
+          <option value="completed" {% if status_f=='completed' %}selected{% endif %}>Completed</option>
+        </select>
+      </div>
+      <div style="min-width:130px;">
+        <div class="form-label">Faculty</div>
+        <select name="faculty" class="form-control">
+          <option value="">All Faculty</option>
+          {% for f in faculty_list %}<option value="{{ f.id }}" {% if sel_faculty==f.id|string %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Filter</button>
+      {% if status_f or sel_faculty %}<a href="/admin/exams" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+{% if exams %}
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-journal-text" style="color:var(--primary);margin-right:6px;"></i>Exams</h5>
+    <span class="badge bdg-gray">{{ exams|length }} found</span>
+  </div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Title</th><th>Faculty</th><th>Classroom</th><th>Questions</th><th>Status</th><th>Date</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for e in exams %}
+      <tr>
+        <td class="font-semi">{{ e.title }}</td>
+        <td class="text-muted">{{ e.faculty_name or '—' }}</td>
+        <td class="text-muted">{{ e.classroom_name or '—' }}</td>
+        <td><span class="badge bdg-primary">{{ e.question_count }}</span></td>
+        <td>
+          {% if e.published==0 %}<span class="badge bdg-secondary">Draft</span>
+          {% elif e.launched==0 %}<span class="badge bdg-info">Published</span>
+          {% else %}<span class="badge bdg-success">Completed</span>{% endif %}
+        </td>
+        <td class="text-muted text-sm">{{ e.exam_date or '—' }}</td>
+        <td class="flex gap-2">
+          <a href="/preview_exam/{{ e.id }}" class="btn btn-outline btn-sm"><i class="bi bi-eye"></i></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card"><div class="empty"><i class="bi bi-journal-text"></i><p>No exams found.</p></div></div>
+{% endif %}
+
+{% endblock %}

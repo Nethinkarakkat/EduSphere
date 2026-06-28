@@ -1,0 +1,17 @@
+{% extends "components/base.html" %}
+{% block title %}Already Submitted — EduSphere{% endblock %}
+{% block page_title %}Exam Already Submitted{% endblock %}
+
+{% block content %}
+<div class="max-w-md" style="margin:0 auto;">
+  <div class="card text-center" style="padding:48px 32px;">
+    <div style="width:64px;height:64px;background:var(--warning-light);border-radius:50%;
+                display:flex;align-items:center;justify-content:center;margin:0 auto 16px;font-size:28px;">
+      ⚠️
+    </div>
+    <div style="font-size:18px;font-weight:700;margin-bottom:8px;">Already Submitted</div>
+    <p class="text-muted mb-5">You have already completed this exam. Each exam can only be attempted once.</p>
+    <a href="/student" class="btn btn-primary"><i class="bi bi-arrow-left"></i> Back to My Exams</a>
+  </div>
+</div>
+{% endblock %}

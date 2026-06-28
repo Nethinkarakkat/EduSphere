@@ -1,0 +1,296 @@
+{% extends "components/base.html" %}
+{% block title %}Student Profile — EduSphere{% endblock %}
+{% block page_title %}Profile{% endblock %}
+{% block page_sub %}Manage your account settings{% endblock %}
+
+{% block content %}
+<style>
+.profile-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+@media (max-width: 992px) {
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 576px) {
+  .profile-grid {
+    gap: 16px;
+  }
+}
+.profile-section {
+  margin-bottom: 24px;
+}
+.profile-section:last-child {
+  margin-bottom: 0;
+}
+.section-header {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--primary);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.info-item:last-child {
+  border-bottom: none;
+}
+.info-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+.info-value {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text);
+}
+.avatar-container {
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-light);
+  border: 3px solid var(--primary);
+  margin: 0 auto 16px;
+}
+.avatar-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+.form-group {
+  margin-bottom: 16px;
+}
+.form-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+.form-control {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+.form-control:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+.form-helper {
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+@media (max-width: 576px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
+
+<!-- Top Row -->
+<div class="profile-grid">
+  <!-- Personal Information -->
+  <div class="card">
+    <div class="card-head"><h5>Personal Information</h5></div>
+    <div class="card-body">
+      <form method="POST">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Full Name *</label>
+            <input type="text" name="name" class="form-control" value="{{ session.get('name','') }}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone Number *</label>
+            <input type="tel" name="phone" class="form-control" value="{{ user['phone'] if user and 'phone' in user and user['phone'] else '' }}" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Date of Birth</label>
+            <input type="date" name="date_of_birth" class="form-control" value="{{ user['date_of_birth'] if user and 'date_of_birth' in user and user['date_of_birth'] else '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Gender</label>
+            <select name="gender" class="form-control">
+              <option value="">Select Gender</option>
+              <option value="Male" {% if user and 'gender' in user and user['gender'] == 'Male' %}selected{% endif %}>Male</option>
+              <option value="Female" {% if user and 'gender' in user and user['gender'] == 'Female' %}selected{% endif %}>Female</option>
+              <option value="Other" {% if user and 'gender' in user and user['gender'] == 'Other' %}selected{% endif %}>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address *</label>
+          <input type="email" name="email" class="form-control" value="{{ session.get('email','') }}" required id="emailInput">
+          <div class="form-helper">Changing email will require password verification.</div>
+        </div>
+        
+        <div class="form-group" id="passwordGroup" style="display:none;">
+          <label class="form-label">Current Password *</label>
+          <input type="password" name="current_password" class="form-control" placeholder="Enter current password to confirm email change">
+          <div class="form-helper">Required to change email address.</div>
+        </div>
+        
+        <!-- Academic Information -->
+        <div class="section-header" style="margin-top: 24px;">Academic Information</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Registration Number *</label>
+            <input type="text" name="reg_number" class="form-control" value="{{ user['reg_number'] if user and 'reg_number' in user and user['reg_number'] else '' }}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Program / Course *</label>
+            <input type="text" name="program" class="form-control" value="{{ user['program'] if user and 'program' in user and user['program'] else '' }}" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Section / Batch *</label>
+          <input type="text" name="section" class="form-control" value="{{ user['section'] if user and 'section' in user and user['section'] else '' }}" required>
+        </div>
+        
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-check-lg"></i> Save Changes</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Profile Picture -->
+  <div class="card">
+    <div class="card-head"><h5>Profile Picture</h5></div>
+    <div class="card-body" style="text-align: center;">
+      <div class="avatar-container">
+        {% set avatar = get_avatar(user) %}
+        {% set initial = user["name"][0]|upper if user and "name" in user else "U" %}
+        {% if avatar %}
+          <img src="{{ avatar }}" alt="Profile" style="width:240px;height:240px;object-fit:cover;object-position:center;border-radius:50%;" data-initial="{{ initial }}" onerror="this.style.display='none'; this.parentElement.style.background='var(--primary-light)'; this.parentElement.innerHTML=this.dataset.initial;">
+        {% else %}
+          <div style="width:240px;height:240px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:80px;font-weight:700;color:var(--primary);">
+            {{ initial }}
+          </div>
+        {% endif %}
+      </div>
+      <div class="avatar-actions">
+        <input type="file" name="profile_pic" accept="image/jpeg,image/jpg,image/png" style="display:none;" id="profilePicInput" onchange="handleFileSelect(this, '/student/profile/upload_picture')">
+        <button type="button" onclick="document.getElementById('profilePicInput').click()" class="btn btn-outline btn-sm">
+          <i class="bi bi-upload"></i> Upload New Photo
+        </button>
+        {% if user and 'profile_picture' in user and user['profile_picture'] %}
+        <form method="POST" action="/student/profile/remove_picture" style="display:inline;">
+          <button type="submit" class="btn btn-danger btn-sm" onclick="return confirm('Are you sure you want to delete your profile picture?')">
+            <i class="bi bi-trash"></i> Remove Photo
+          </button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="form-helper" style="margin-top: 12px;">JPG, JPEG, PNG • Max 2MB</div>
+    </div>
+  </div>
+</div>
+
+<!-- Bottom Row -->
+<div class="profile-grid">
+  <!-- Account Activity -->
+  <div class="card">
+    <div class="card-head"><h5>Account Activity</h5></div>
+    <div class="card-body">
+      <div class="info-item">
+        <span class="info-label">Last Login</span>
+        <span class="info-value">{{ user['last_login'][:16] if user and 'last_login' in user and user['last_login'] else '—' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Account Created</span>
+        <span class="info-value">{{ user['created_at'][:10] if user and 'created_at' in user and user['created_at'] else '—' }}</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Last Profile Update</span>
+        <span class="info-value">{{ user['last_profile_update'][:16] if user and 'last_profile_update' in user and user['last_profile_update'] else '—' }}</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Account Information -->
+  <div class="card">
+    <div class="card-head"><h5>Account Information</h5></div>
+    <div class="card-body">
+      <div class="info-item">
+        <span class="info-label">Role</span>
+        <span class="info-value">Student</span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Status</span>
+        <span class="info-value"><span class="badge bdg-success">Active</span></span>
+      </div>
+      <div class="info-item">
+        <span class="info-label">Email Verified</span>
+        <span class="info-value"><span class="badge bdg-success">Verified</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 16px;">
+  <a href="/student/change_password" class="btn btn-ghost btn-sm"><i class="bi bi-key-fill"></i> Change Password</a>
+</div>
+
+<script>
+// Show password field when email is being changed
+const emailInput = document.getElementById('emailInput');
+const passwordGroup = document.getElementById('passwordGroup');
+const originalEmail = emailInput.value;
+
+emailInput.addEventListener('input', function() {
+  if (this.value !== originalEmail) {
+    passwordGroup.style.display = 'block';
+  } else {
+    passwordGroup.style.display = 'none';
+  }
+});
+
+function handleFileSelect(input, uploadUrl) {
+  if (input.files && input.files[0]) {
+    const file = input.files[0];
+    
+    // Validate file size (2MB max)
+    if (file.size > 2 * 1024 * 1024) {
+      alert('File size exceeds 2MB limit.');
+      input.value = '';
+      return;
+    }
+    
+    // Validate file type
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+      alert('Invalid file type. Only JPG, JPEG, PNG allowed.');
+      input.value = '';
+      return;
+    }
+    
+    // Open crop modal
+    openCropModal(file, uploadUrl);
+  }
+}
+</script>
+
+{% endblock %}

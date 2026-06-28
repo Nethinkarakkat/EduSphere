@@ -1,0 +1,49 @@
+{% extends "components/base.html" %}
+{% block title %}Classrooms — EduSphere{% endblock %}
+{% block page_title %}Classrooms{% endblock %}
+{% block page_sub %}Manage your virtual classrooms{% endblock %}
+{% block topbar_actions %}
+  <a href="/classrooms/create" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Classroom</a>
+{% endblock %}
+
+{% block content %}
+
+{% if rooms %}
+<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+  {% for r in rooms %}
+  <div class="card" style="transition:box-shadow .2s,transform .2s;"
+       onmouseover="this.style.boxShadow='var(--shadow)';this.style.transform='translateY(-2px)';"
+       onmouseout="this.style.boxShadow='';this.style.transform='';">
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+      <span class="badge bdg-primary"><i class="bi bi-people-fill"></i> Classroom</span>
+      <span class="badge bdg-gray">{{ r.member_count }} students</span>
+    </div>
+    <div style="padding:18px;">
+      <div style="font-size:15px;font-weight:700;margin-bottom:6px;">{{ r.name }}</div>
+      <div class="text-sm text-muted mb-3">{{ r.subject or 'No subject' }}</div>
+      <!-- Classroom code -->
+      <div class="classroom-code-card">
+        <div>
+          <div class="classroom-code-label">Join Code</div>
+          <div class="classroom-code-value">{{ r.code }}</div>
+        </div>
+        <button onclick="navigator.clipboard.writeText('{{ r.code }}');this.innerHTML='<i class=\'bi bi-check2\'></i>'"
+                class="btn btn-primary btn-sm"><i class="bi bi-copy"></i></button>
+      </div>
+      <a href="/classrooms/{{ r.id }}" class="btn btn-outline btn-sm w-full" style="justify-content:center;">
+        <i class="bi bi-arrow-right-circle"></i> Manage
+      </a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card">
+  <div class="empty">
+    <i class="bi bi-people"></i>
+    <p>No classrooms yet. <a href="/classrooms/create" style="color:var(--primary);">Create your first →</a></p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

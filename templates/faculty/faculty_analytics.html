@@ -1,0 +1,247 @@
+{% extends "components/base.html" %}
+{% block title %}Analytics — EduSphere{% endblock %}
+{% block page_title %}My Analytics{% endblock %}
+{% block page_sub %}Performance insights across your exams{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block topbar_actions %}
+  {% set query_params = request.args.copy() %}
+  <a href="/faculty/analytics/export?{{ query_params|urlencode }}" class="btn btn-success btn-sm">
+    <i class="bi bi-download"></i> Export CSV
+  </a>
+  <a href="/faculty/analytics/export/pdf?{{ query_params|urlencode }}" class="btn btn-primary btn-sm">
+    <i class="bi bi-file-earmark-pdf"></i> Export PDF
+  </a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Filters ── -->
+<div class="card mb-5">
+  <div class="card-head"><h5><i class="bi bi-funnel" style="color:var(--primary);margin-right:6px;"></i>Filters</h5></div>
+  <div class="card-body">
+    <form method="GET" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;align-items:flex-end;">
+      <div>
+        <div class="form-label">Exam</div>
+        <select name="exam" class="form-control">
+          <option value="">All Exams</option>
+          {% for e in my_exams %}<option value="{{ e.id }}" {% if sel_exam==e.id|string %}selected{% endif %}>{{ e.title }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <div class="form-label">Classroom</div>
+        <select name="classroom" class="form-control">
+          <option value="">All Classrooms</option>
+          {% for c in my_classrooms %}<option value="{{ c.id }}" {% if sel_classroom==c.id|string %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div>
+        <div class="form-label">Subject</div>
+        <select name="subject" class="form-control">
+          <option value="">All Subjects</option>
+          {% for s in subjects %}<option value="{{ s.subject }}" {% if sel_subject==s.subject %}selected{% endif %}>{{ s.subject }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Apply</button>
+        <a href="/faculty/analytics" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Charts row ── -->
+<div class="g-2 mb-5">
+
+  <!-- Avg % per exam bar chart -->
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-bar-chart-fill" style="color:var(--primary);margin-right:6px;"></i>Average Score per Exam</h5></div>
+    <div class="card-body"><canvas id="examChart" style="max-height:240px;"></canvas></div>
+  </div>
+
+  <!-- Classroom avg doughnut -->
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-people-fill" style="color:var(--primary);margin-right:6px;"></i>Classroom Avg %</h5></div>
+    <div class="card-body" style="display:flex;align-items:center;justify-content:center;">
+      <canvas id="classroomChart" style="max-height:220px;max-width:280px;"></canvas>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Per-exam stats table ── -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-journal-text" style="color:var(--primary);margin-right:6px;"></i>Exam Statistics</h5>
+    <span class="badge bdg-gray">{{ exam_stats|length }} exams</span>
+  </div>
+  {% if exam_stats %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Exam</th><th>Classroom</th><th>Subject</th><th>Date</th><th>Attempts</th><th>Avg Score</th><th>Avg %</th><th>Max</th><th>Min</th><th>Total Marks</th></tr></thead>
+    <tbody>
+      {% for e in exam_stats %}
+      {% set avg_pct = ((e.avg_score/e.total_q)*100)|round(1) if e.total_q and e.avg_score else 0 %}
+      <tr>
+        <td class="font-semi">{{ e.title }}</td>
+        <td class="text-muted">{{ e.classroom_name or '—' }}</td>
+        <td class="text-muted">{{ e.subject or '—' }}</td>
+        <td class="text-muted">{{ e.exam_date }}</td>
+        <td><span class="badge bdg-primary">{{ e.attempt_count }}</span></td>
+        <td class="font-bold" style="color:var(--primary);">{{ e.avg_score|round(1) if e.avg_score else '—' }}</td>
+        <td>
+          <div class="flex items-center gap-2">
+            <span class="font-bold" style="color:{% if avg_pct>=50 %}var(--success){% else %}var(--danger){% endif %};">{{ avg_pct }}%</span>
+            <div class="prog-wrap" style="width:60px;"><div class="prog-fill {% if avg_pct>=50 %}success{% else %}danger{% endif %}" style="width:{{ avg_pct }}%;"></div></div>
+          </div>
+        </td>
+        <td class="text-muted">{{ e.max_score if e.max_score is not none else '—' }}</td>
+        <td class="text-muted">{{ e.min_score if e.min_score is not none else '—' }}</td>
+        <td class="text-muted">{{ e.total_q }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty"><i class="bi bi-bar-chart"></i><p>No data for selected filters.</p></div>
+  {% endif %}
+</div>
+
+<!-- ── Subject + Classroom side by side ── -->
+<div class="g-2 mb-5">
+
+  <!-- Subject-wise -->
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-book" style="color:var(--primary);margin-right:6px;"></i>Subject Analytics</h5></div>
+    {% if subject_stats %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Subject</th><th>Exams</th><th>Attempts</th><th>Avg %</th></tr></thead>
+      <tbody>
+        {% for s in subject_stats %}
+        {% set pct = s.avg_pct|round(1) if s.avg_pct else 0 %}
+        <tr>
+          <td class="font-semi">{{ s.subject }}</td>
+          <td><span class="badge bdg-primary">{{ s.exam_count }}</span></td>
+          <td>{{ s.total_attempts }}</td>
+          <td>
+            <div class="flex items-center gap-2">
+              <span class="font-bold" style="color:{% if pct>=50 %}var(--success){% else %}var(--danger){% endif %};">{{ pct }}%</span>
+              <div class="prog-wrap" style="width:60px;"><div class="prog-fill {% if pct>=50 %}success{% else %}danger{% endif %}" style="width:{{ pct }}%;"></div></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-book"></i><p>No subject data yet.</p></div>
+    {% endif %}
+  </div>
+
+  <!-- Classroom-wise -->
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-people-fill" style="color:var(--primary);margin-right:6px;"></i>Classroom Analytics</h5></div>
+    {% if classroom_stats %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Classroom</th><th>Exams</th><th>Attempts</th><th>Avg %</th></tr></thead>
+      <tbody>
+        {% for c in classroom_stats %}
+        {% set pct = c.avg_pct|round(1) if c.avg_pct else 0 %}
+        <tr>
+          <td class="font-semi">{{ c.classroom_name }}</td>
+          <td><span class="badge bdg-primary">{{ c.exam_count }}</span></td>
+          <td>{{ c.total_attempts }}</td>
+          <td>
+            <div class="flex items-center gap-2">
+              <span class="font-bold" style="color:{% if pct>=50 %}var(--success){% else %}var(--danger){% endif %};">{{ pct }}%</span>
+              <div class="prog-wrap" style="width:60px;"><div class="prog-fill {% if pct>=50 %}success{% else %}danger{% endif %}" style="width:{{ pct }}%;"></div></div>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-people"></i><p>No classroom data yet.</p></div>
+    {% endif %}
+  </div>
+
+</div>
+
+<!-- ── Top & Low performers ── -->
+<div class="g-2">
+
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-trophy-fill" style="color:var(--warning);margin-right:6px;"></i>Top Performers</h5></div>
+    {% if top_students %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Rank</th><th>Student</th><th>Avg %</th><th>Exams</th></tr></thead>
+      <tbody>
+        {% for s in top_students %}
+        <tr>
+          <td>{% if loop.index==1 %}🥇{% elif loop.index==2 %}🥈{% elif loop.index==3 %}🥉{% else %}{{ loop.index }}{% endif %}</td>
+          <td class="font-semi">{{ s.name }}</td>
+          <td><span class="font-bold" style="color:var(--success);">{{ s.avg_pct|round(1) }}%</span></td>
+          <td class="text-muted">{{ s.attempts }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-people"></i><p>No data yet.</p></div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-arrow-down-circle-fill" style="color:var(--danger);margin-right:6px;"></i>Needs Improvement</h5></div>
+    {% if low_students %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Student</th><th>Avg %</th><th>Exams</th><th>Worst Score</th></tr></thead>
+      <tbody>
+        {% for s in low_students %}
+        <tr>
+          <td class="font-semi">{{ s.name }}</td>
+          <td><span class="font-bold" style="color:var(--danger);">{{ s.avg_pct|round(1) }}%</span></td>
+          <td class="text-muted">{{ s.attempts }}</td>
+          <td class="text-muted">{{ s.worst_score if s.worst_score is not none else '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-people"></i><p>No data yet.</p></div>
+    {% endif %}
+  </div>
+
+</div>
+
+<script>
+// Bar chart — avg % per exam
+const examLabels = [{% for e in exam_stats %}"{{ e.title[:20] }}",{% endfor %}];
+const examAvg    = [{% for e in exam_stats %}{{ ((e.avg_score/e.total_q)*100)|round(1) if e.total_q and e.avg_score else 0 }},{% endfor %}];
+const examColors = examAvg.map(v => v>=50 ? 'rgba(16,185,129,.75)' : 'rgba(239,68,68,.75)');
+
+if (examLabels.length) {
+  new Chart(document.getElementById('examChart'), {
+    type:'bar', data:{ labels:examLabels,
+      datasets:[{ label:'Avg %', data:examAvg, backgroundColor:examColors, borderRadius:5 }]},
+    options:{ responsive:true, plugins:{legend:{display:false}},
+      scales:{ y:{beginAtZero:true,max:100,grid:{color:'#f1f5f9'}}, x:{grid:{display:false}} }}
+  });
+}
+
+// Doughnut — classroom avg
+const cLabels = [{% for c in classroom_stats %}"{{ c.classroom_name }}",{% endfor %}];
+const cData   = [{% for c in classroom_stats %}{{ c.avg_pct|round(1) if c.avg_pct else 0 }},{% endfor %}];
+const cColors = ['rgba(79,70,229,.8)','rgba(16,185,129,.8)','rgba(245,158,11,.8)','rgba(239,68,68,.8)','rgba(14,165,233,.8)'];
+
+if (cLabels.length) {
+  new Chart(document.getElementById('classroomChart'), {
+    type:'doughnut', data:{ labels:cLabels,
+      datasets:[{ data:cData, backgroundColor:cColors.slice(0,cLabels.length), borderWidth:2 }]},
+    options:{ plugins:{legend:{position:'bottom'}}, cutout:'60%' }
+  });
+}
+</script>
+
+{% endblock %}

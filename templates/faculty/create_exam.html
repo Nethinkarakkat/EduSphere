@@ -1,0 +1,265 @@
+{% extends "components/base.html" %}
+{% block title %}Create Exam — EduSphere{% endblock %}
+{% block page_title %}Create Exam{% endblock %}
+{% block page_sub %}Exams are created inside a classroom{% endblock %}
+{% block topbar_actions %}
+  <a href="/classrooms" class="btn btn-outline btn-sm"><i class="bi bi-people"></i> My Classrooms</a>
+{% endblock %}
+
+{% block content %}
+<style>
+.create-exam-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 24px;
+}
+@media (max-width: 992px) {
+  .create-exam-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.exam-summary-card {
+  position: sticky;
+  top: 100px;
+}
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+.summary-item:last-child {
+  border-bottom: none;
+}
+.summary-label {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+.summary-value {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+</style>
+
+{% if not classrooms %}
+<!-- No classrooms yet -->
+<div class="card" style="text-align:center;padding:48px 32px;">
+  <div style="font-size:40px;margin-bottom:12px;">🏫</div>
+  <div style="font-size:17px;font-weight:700;margin-bottom:8px;">Create a Classroom First</div>
+  <p class="text-muted" style="margin-bottom:24px;">
+    Every exam belongs to a classroom. Create a classroom first, then add exams inside it.
+  </p>
+  <a href="/classrooms/create" class="btn btn-primary">
+    <i class="bi bi-plus-lg"></i> Create Classroom
+  </a>
+</div>
+
+{% else %}
+<!-- Statistics Cards -->
+<div class="stats-grid" style="margin-bottom: 24px;">
+  <div class="stat">
+    <div class="stat-ico ico-blue"><i class="bi bi-journal-text"></i></div>
+    <div>
+      <div class="stat-val">{{ stats.total_exams }}</div>
+      <div class="stat-lbl">Total Exams</div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-green"><i class="bi bi-check-circle-fill"></i></div>
+    <div>
+      <div class="stat-val">{{ stats.published_exams }}</div>
+      <div class="stat-lbl">Published Exams</div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-yellow"><i class="bi bi-file-earmark"></i></div>
+    <div>
+      <div class="stat-val">{{ stats.draft_exams }}</div>
+      <div class="stat-lbl">Draft Exams</div>
+    </div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-cyan"><i class="bi bi-door-closed-fill"></i></div>
+    <div>
+      <div class="stat-val">{{ stats.classrooms }}</div>
+      <div class="stat-lbl">Classrooms</div>
+    </div>
+  </div>
+</div>
+
+<!-- Main Content -->
+<div class="create-exam-grid">
+  <!-- Left Side: Form -->
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-plus-circle-fill" style="color:var(--primary);margin-right:6px;"></i>New Exam</h5>
+    </div>
+    <div class="card-body">
+      <form method="POST" id="examForm">
+
+        <!-- Classroom selector -->
+        <div class="form-group">
+          <label class="form-label">Classroom <span style="color:var(--danger);">*</span></label>
+          <select name="classroom_id" class="form-control" id="classroomSelect" required onchange="updateClassroomPreview()">
+            <option value="">Select classroom…</option>
+            {% for c in classrooms %}
+            <option value="{{ c.id }}" data-students="{{ c.student_count or 0 }}" data-faculty="{{ c.faculty_name or '' }}" data-exams="{{ c.exam_count or 0 }}">{{ c.name }}{% if c.subject %} — {{ c.subject }}{% endif %}</option>
+            {% endfor %}
+          </select>
+          <div class="form-hint">Only students enrolled in this classroom will see the exam.</div>
+        </div>
+
+        <!-- Classroom Preview -->
+        <div id="classroomPreview" class="card" style="margin-bottom: 20px; display: none; background: var(--primary-light);">
+          <div class="card-body" style="padding: 16px;">
+            <div style="font-size: 13px; font-weight: 600; color: var(--primary); margin-bottom: 8px;">Classroom Information</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; font-size: 13px;">
+              <div><span style="color: var(--text-muted);">Name:</span> <span id="previewName" style="font-weight: 500;">—</span></div>
+              <div><span style="color: var(--text-muted);">Students:</span> <span id="previewStudents" style="font-weight: 500;">—</span></div>
+              <div><span style="color: var(--text-muted);">Faculty:</span> <span id="previewFaculty" style="font-weight: 500;">—</span></div>
+              <div><span style="color: var(--text-muted);">Exams:</span> <span id="previewExams" style="font-weight: 500;">—</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Exam Title <span style="color:var(--danger);">*</span></label>
+          <input type="text" name="title" class="form-control" id="examTitle" placeholder="e.g. Unit 3 Test" required oninput="updateExamSummary()">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Subject</label>
+          <input type="text" name="subject" class="form-control" id="examSubject" placeholder="e.g. Mathematics" oninput="updateExamSummary()">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Exam Date <span style="color:var(--danger);">*</span></label>
+            <input type="date" name="exam_date" class="form-control" id="examDate" required oninput="updateExamSummary()">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Duration (minutes) <span style="color:var(--danger);">*</span></label>
+            <input type="number" name="duration" class="form-control" id="examDuration" placeholder="e.g. 30" min="1" required oninput="updateExamSummary()">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Pass Percentage</label>
+          <input type="number" name="pass_percentage" class="form-control" id="passPercentage" value="50" min="0" max="100" step="1" required oninput="updateExamSummary()">
+          <div class="form-hint">Percentage required to pass (0–100). Default: 50%</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Instructions</label>
+          <textarea name="instructions" class="form-control" rows="4" placeholder="Enter exam instructions for students..."></textarea>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Add Questions By</label>
+          <select name="method" class="form-control">
+            <option value="manual">Write questions manually</option>
+            <option value="bank">Import from Question Bank</option>
+          </select>
+        </div>
+
+        <div class="flex gap-3 mt-3">
+          <button type="submit" name="action" value="draft" class="btn btn-outline"><i class="bi bi-save"></i> Save Draft</button>
+          <button type="submit" name="action" value="create" class="btn btn-primary"><i class="bi bi-check-lg"></i> Create Exam</button>
+          <a href="/faculty" class="btn btn-ghost">Cancel</a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+  <!-- Right Side: Exam Summary -->
+  <div class="card exam-summary-card">
+    <div class="card-head">
+      <h5><i class="bi bi-file-earmark-text" style="color:var(--primary);margin-right:6px;"></i>Exam Summary</h5>
+    </div>
+    <div class="card-body">
+      <div class="summary-item">
+        <span class="summary-label">Classroom</span>
+        <span class="summary-value" id="summaryClassroom">—</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Students</span>
+        <span class="summary-value" id="summaryStudents">—</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Title</span>
+        <span class="summary-value" id="summaryTitle">—</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Subject</span>
+        <span class="summary-value" id="summarySubject">—</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Date</span>
+        <span class="summary-value" id="summaryDate">—</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Duration</span>
+        <span class="summary-value" id="summaryDuration">—</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Pass Percentage</span>
+        <span class="summary-value" id="summaryPass">50%</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Questions Added</span>
+        <span class="summary-value" id="summaryQuestions">0</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Total Marks</span>
+        <span class="summary-value" id="summaryMarks">0</span>
+      </div>
+      <div class="summary-item">
+        <span class="summary-label">Status</span>
+        <span class="summary-value"><span class="badge bdg-warning">Draft</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function updateClassroomPreview() {
+  const select = document.getElementById('classroomSelect');
+  const selectedOption = select.options[select.selectedIndex];
+  const preview = document.getElementById('classroomPreview');
+  
+  if (select.value) {
+    preview.style.display = 'block';
+    document.getElementById('previewName').textContent = selectedOption.text;
+    document.getElementById('previewStudents').textContent = selectedOption.dataset.students || '0';
+    document.getElementById('previewFaculty').textContent = selectedOption.dataset.faculty || '—';
+    document.getElementById('previewExams').textContent = selectedOption.dataset.exams || '0';
+    
+    // Update summary
+    document.getElementById('summaryClassroom').textContent = selectedOption.text.split(' — ')[0];
+    document.getElementById('summaryStudents').textContent = selectedOption.dataset.students || '0';
+  } else {
+    preview.style.display = 'none';
+    document.getElementById('summaryClassroom').textContent = '—';
+    document.getElementById('summaryStudents').textContent = '—';
+  }
+}
+
+function updateExamSummary() {
+  const title = document.getElementById('examTitle').value || '—';
+  const subject = document.getElementById('examSubject').value || '—';
+  const date = document.getElementById('examDate').value || '—';
+  const duration = document.getElementById('examDuration').value || '—';
+  const pass = document.getElementById('passPercentage').value || '50';
+  
+  document.getElementById('summaryTitle').textContent = title;
+  document.getElementById('summarySubject').textContent = subject;
+  document.getElementById('summaryDate').textContent = date;
+  document.getElementById('summaryDuration').textContent = duration ? duration + ' min' : '—';
+  document.getElementById('summaryPass').textContent = pass + '%';
+}
+</script>
+
+{% endblock %}

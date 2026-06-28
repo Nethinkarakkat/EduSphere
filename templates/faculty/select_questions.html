@@ -1,0 +1,50 @@
+{% extends "components/base.html" %}
+{% block title %}Select Questions — EduSphere{% endblock %}
+{% block page_title %}Import from Question Bank{% endblock %}
+{% block page_sub %}Select questions to add to this exam{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-collection" style="color:var(--primary);margin-right:6px;"></i>Available Questions</h5>
+    <span class="badge bdg-gray">{{ questions|length }} questions</span>
+  </div>
+
+  {% if questions %}
+  <form method="POST">
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead>
+          <tr>
+            <th style="width:40px;">
+              <input type="checkbox" id="selectAll" title="Select all"
+                     onchange="document.querySelectorAll('input[name=questions]').forEach(c=>c.checked=this.checked)">
+            </th>
+            <th>Question</th>
+            <th>Category</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for q in questions %}
+          <tr>
+            <td><input type="checkbox" name="questions" value="{{ q.id }}"></td>
+            <td>{{ q.question }}</td>
+            <td><span class="badge bdg-info">{{ q.category or '—' }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div style="padding:16px 18px;border-top:1px solid var(--border);display:flex;gap:12px;">
+      <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add Selected</button>
+      <a href="/faculty" class="btn btn-ghost">Cancel</a>
+    </div>
+  </form>
+  {% else %}
+  <div class="empty">
+    <i class="bi bi-collection"></i>
+    <p>Your question bank is empty. <a href="/add_bank_question" style="color:var(--primary);">Add questions →</a></p>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends "components/base.html" %}
+{% block title %}My Classrooms — EduSphere{% endblock %}
+{% block page_title %}My Classrooms{% endblock %}
+{% block page_sub %}View and manage your enrolled classrooms{% endblock %}
+
+{% block topbar_actions %}
+  <a href="/join_classroom" class="btn btn-primary btn-sm"><i class="bi bi-box-arrow-in-right"></i> Join Classroom</a>
+{% endblock %}
+
+{% block content %}
+
+{% if classrooms %}
+<div class="g-3 mb-5">
+  {% for c in classrooms %}
+  <div class="card" style="transition:transform 0.2s ease,box-shadow 0.2s ease;">
+    <div class="card-body" style="padding:24px;">
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+        <div style="width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;background:var(--primary-light);">
+          <i class="bi bi-door-open-fill" style="font-size:24px;color:var(--primary);"></i>
+        </div>
+        <div style="flex:1;">
+          <h5 style="margin:0;font-size:18px;">{{ c.name }}</h5>
+          <div style="font-size:13px;color:var(--muted);">{{ c.subject or 'General' }}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:20px;font-size:13px;">
+        <div><span style="color:var(--muted);">Faculty:</span> <span style="font-weight:600;">{{ c.faculty_name }}</span></div>
+        <div><span style="color:var(--muted);">Students:</span> <span style="font-weight:600;">{{ c.student_count }}</span></div>
+        <div><span style="color:var(--muted);">Exams:</span> <span style="font-weight:600;">{{ c.exam_count }}</span></div>
+      </div>
+      <a href="/student/classroom/{{ c.id }}" class="btn btn-outline btn-sm" style="text-decoration:none;">View Classroom →</a>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="card" style="border:2px dashed var(--primary);background:var(--primary-light);text-align:center;padding:40px 24px;">
+  <div style="font-size:48px;margin-bottom:16px;">🏫</div>
+  <div style="font-size:18px;font-weight:700;color:var(--primary);margin-bottom:8px;">No Classrooms Yet</div>
+  <p style="color:var(--text-muted);margin-bottom:20px;">Join a classroom to get started with your exams.</p>
+  <a href="/join_classroom" class="btn btn-primary"><i class="bi bi-box-arrow-in-right"></i> Join Classroom</a>
+</div>
+{% endif %}
+
+{% endblock %}

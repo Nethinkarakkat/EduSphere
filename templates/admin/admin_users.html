@@ -1,0 +1,104 @@
+{% extends "components/base.html" %}
+{% block title %}Users — EduSphere{% endblock %}
+{% block page_title %}User Management{% endblock %}
+{% block page_sub %}All registered users{% endblock %}
+{% block topbar_actions %}
+  {% set query_params = request.args.copy() %}
+  <a href="/admin/users/export?{{ query_params|urlencode }}" class="btn btn-success btn-sm"><i class="bi bi-download"></i> Export CSV</a>
+  <a href="/admin/users/export/pdf?{{ query_params|urlencode }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i> Export PDF</a>
+  <a href="/add_user" class="btn btn-primary btn-sm"><i class="bi bi-person-plus-fill"></i> Add User</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Search & Filters -->
+<div class="card mb-5">
+  <div class="card-body">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:2;min-width:180px;">
+        <div class="form-label">Search</div>
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Name or email…">
+      </div>
+      <div style="min-width:130px;">
+        <div class="form-label">Role</div>
+        <select name="role" class="form-control">
+          <option value="">All Roles</option>
+          <option value="admin"   {% if role_f=='admin'   %}selected{% endif %}>Admin</option>
+          <option value="faculty" {% if role_f=='faculty' %}selected{% endif %}>Faculty</option>
+          <option value="student" {% if role_f=='student' %}selected{% endif %}>Student</option>
+        </select>
+      </div>
+      <div style="min-width:130px;">
+        <div class="form-label">Status</div>
+        <select name="status" class="form-control">
+          <option value="">All Status</option>
+          <option value="active"  {% if status_f=='active'  %}selected{% endif %}>Active</option>
+          <option value="pending" {% if status_f=='pending' %}selected{% endif %}>Pending</option>
+        </select>
+      </div>
+      <div style="min-width:130px;">
+        <div class="form-label">Sort</div>
+        <select name="sort" class="form-control">
+          <option value="newest" {% if sort=='newest' %}selected{% endif %}>Newest first</option>
+          <option value="oldest" {% if sort=='oldest' %}selected{% endif %}>Oldest first</option>
+          <option value="id_asc" {% if sort=='id_asc' %}selected{% endif %}>ID: Low to High</option>
+          <option value="id_desc" {% if sort=='id_desc' %}selected{% endif %}>ID: High to Low</option>
+          <option value="name_asc" {% if sort=='name_asc' %}selected{% endif %}>Name: A-Z</option>
+          <option value="name_desc" {% if sort=='name_desc' %}selected{% endif %}>Name: Z-A</option>
+          <option value="email_asc" {% if sort=='email_asc' %}selected{% endif %}>Email: A-Z</option>
+          <option value="email_desc" {% if sort=='email_desc' %}selected{% endif %}>Email: Z-A</option>
+          <option value="role_asc" {% if sort=='role_asc' %}selected{% endif %}>Role: A-Z</option>
+          <option value="role_desc" {% if sort=='role_desc' %}selected{% endif %}>Role: Z-A</option>
+          <option value="status_asc" {% if sort=='status_asc' %}selected{% endif %}>Status: Pending first</option>
+          <option value="status_desc" {% if sort=='status_desc' %}selected{% endif %}>Status: Active first</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Filter</button>
+      {% if q or role_f or status_f %}<a href="/admin/users" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-people" style="color:var(--primary);margin-right:6px;"></i>Users</h5>
+    <span class="badge-count">{{ users|length }} found</span>
+  </div>
+  {% if users %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for u in users %}
+      <tr>
+        <td class="text-muted">{{ u.id }}</td>
+        <td class="font-semi">{{ u.name }}</td>
+        <td class="text-muted">{{ u.email }}</td>
+        <td>
+          {% if u.role=='admin' %}<span class="badge bdg-primary">Admin</span>
+          {% elif u.role=='faculty' %}<span class="badge bdg-info">Faculty</span>
+          {% else %}<span class="badge bdg-success">Student</span>{% endif %}
+        </td>
+        <td>
+          {% if u.approved==1 %}<span class="badge bdg-success"><i class="bi bi-check-circle"></i> Active</span>
+          {% else %}<span class="badge bdg-warning"><i class="bi bi-clock"></i> Pending</span>{% endif %}
+        </td>
+        <td class="text-muted text-sm">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+        <td class="flex gap-2">
+          {% if u.role=='faculty' and u.approved==0 %}
+          <a href="/approve/{{ u.id }}" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Approve</a>
+          {% endif %}
+          <a href="/view_user/{{ u.id }}" class="btn btn-outline btn-sm"><i class="bi bi-eye"></i> View</a>
+          <a href="/edit_user/{{ u.id }}" class="btn btn-outline btn-sm"><i class="bi bi-pencil"></i> Edit</a>
+          <a href="/delete_user/{{ u.id }}" class="btn btn-danger btn-sm"
+             onclick="return confirm('Are you sure you want to permanently delete this user and all associated records? This action cannot be undone.')"><i class="bi bi-trash"></i></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty"><i class="bi bi-people"></i><p>No users found.</p></div>
+  {% endif %}
+</div>
+
+{% endblock %}

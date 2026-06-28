@@ -1,0 +1,140 @@
+{% extends "components/base.html" %}
+{% block title %}My Results — EduSphere{% endblock %}
+{% block page_title %}Result History{% endblock %}
+{% block page_sub %}All your exam results{% endblock %}
+{% block topbar_actions %}
+  <a href="/student/results/export" class="btn btn-success btn-sm">
+    <i class="bi bi-download"></i> Download CSV
+  </a>
+  <a href="/student/results/export/pdf" class="btn btn-primary btn-sm">
+    <i class="bi bi-file-earmark-pdf"></i> Download PDF
+  </a>
+  <a href="{{ request.referrer or '/student' }}" class="btn btn-outline btn-sm">
+    <i class="bi bi-arrow-left"></i> Back
+  </a>
+{% endblock %}
+
+{% block content %}
+
+{% if results %}
+
+<!-- Summary cards -->
+{% set pass_count = results|selectattr('score','defined')|list %}
+{% set total_r = results|length %}
+{% set passed = [] %}
+{% set failed = [] %}
+{% for r in results %}
+  {% if r.score >= r.total / 2 %}{% set _ = passed.append(1) %}{% endif %}
+  {% if r.score < r.total / 2 %}{% set _ = failed.append(1) %}{% endif %}
+{% endfor %}
+
+<div class="g-3 mb-5">
+  <div class="stat">
+    <div class="stat-ico ico-blue"><i class="bi bi-journal-check"></i></div>
+    <div><div class="stat-val">{{ total_r }}</div><div class="stat-lbl">Exams Attempted</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-green"><i class="bi bi-check-circle-fill"></i></div>
+    <div><div class="stat-val">{{ pass_count_val }}</div><div class="stat-lbl">Passed</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-red"><i class="bi bi-x-circle-fill"></i></div>
+    <div><div class="stat-val">{{ fail_count_val }}</div><div class="stat-lbl">Failed</div></div>
+  </div>
+</div>
+
+<!-- Results table -->
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-table" style="color:var(--primary);margin-right:6px;"></i>All Results</h5>
+    <span class="badge bdg-gray">{{ total_r }} records</span>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Exam</th>
+          <th>Subject</th>
+          <th>Faculty</th>
+          <th>Date</th>
+          <th>Score</th>
+          <th>Percentage</th>
+          <th>Result</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in results %}
+        {% set pct = ((r.score/r.total)*100)|round(1) if r.total else 0 %}
+        {% set passed = r.score >= (r.total * (r.pass_percentage or 50) / 100.0) %}
+        {% set published = r.result_published == 1 %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td class="font-semi">{{ r.title }}</td>
+          <td class="text-muted">{{ r.subject or '—' }}</td>
+          <td class="text-muted">{{ r.faculty_name }}</td>
+          <td class="text-muted">{{ r.exam_date }}</td>
+          <td>
+            {% if published %}
+            <span class="font-bold" style="color:var(--primary);">{{ r.score }}/{{ r.total }}</span>
+            {% else %}
+            <span class="text-muted">—</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if published %}
+            <div class="flex items-center gap-2">
+              <span class="font-bold"
+                    style="color:{% if passed %}var(--success){% else %}var(--danger){% endif %};">
+                {{ pct }}%
+              </span>
+              <div class="prog-wrap" style="width:50px;">
+                <div class="prog-fill {% if passed %}success{% else %}danger{% endif %}"
+                     style="width:{{ pct }}%;"></div>
+              </div>
+            </div>
+            {% else %}
+            <span class="badge bdg-warning">Pending</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if published %}
+              {% if passed %}
+              <span class="badge bdg-success"><i class="bi bi-check-circle-fill"></i> Pass</span>
+              {% else %}
+              <span class="badge bdg-danger"><i class="bi bi-x-circle-fill"></i> Fail</span>
+              {% endif %}
+            {% else %}
+              <span class="badge bdg-gray">Not Published</span>
+            {% endif %}
+          </td>
+          <td class="flex gap-2">
+            {% if published %}
+            <a href="/view_result/{{ r.exam_id }}" class="btn btn-outline btn-sm">
+              <i class="bi bi-file-earmark-text"></i> Result
+            </a>
+            <a href="/view_validation/{{ r.exam_id }}" class="btn btn-outline btn-sm">
+              <i class="bi bi-patch-check"></i> Validate
+            </a>
+            {% else %}
+            <span class="text-muted text-sm">Results not published</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="empty">
+    <i class="bi bi-journal-x"></i>
+    <p>No exam attempts yet. <a href="/student" style="color:var(--primary);">Go to My Exams →</a></p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

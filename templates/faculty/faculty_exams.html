@@ -1,0 +1,176 @@
+{% extends "components/base.html" %}
+{% block title %}My Exams — EduSphere{% endblock %}
+{% block page_title %}My Exams{% endblock %}
+{% block page_sub %}Manage all your examinations.{% endblock %}
+
+{% block topbar_actions %}
+  <a href="/create_exam" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Exam</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Search and Filters -->
+<div class="card mb-4">
+  <div class="card-body">
+    <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;">
+      <div style="flex:1;min-width:200px;">
+        <input type="text" id="searchInput" placeholder="Search exams..." class="form-control" style="width:100%;">
+      </div>
+      <div style="min-width:150px;">
+        <select id="classroomFilter" class="form-select" style="width:100%;">
+          <option value="">All Classrooms</option>
+          {% for c in my_classrooms %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div style="min-width:150px;">
+        <select id="statusFilter" class="form-select" style="width:100%;">
+          <option value="">All Status</option>
+          <option value="draft">Draft</option>
+          <option value="active">Active</option>
+          <option value="completed">Published</option>
+        </select>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Exams Table -->
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-journal-text" style="color:var(--primary);margin-right:6px;"></i>All Exams</h5>
+    <div style="font-size:13px;color:var(--muted);">Total: {{ exams|length }}</div>
+  </div>
+
+  {% if exams_with_status %}
+  <div class="tbl-wrap">
+    <table class="tbl" style="width:100%;" id="examsTable">
+      <thead>
+        <tr>
+          <th>Title</th>
+          <th>Classroom</th>
+          <th>Date</th>
+          <th>Questions</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in exams_with_status %}
+        {% set e = item.exam %}
+        {% set s = item.status %}
+
+        <tr style="transition:background-color 0.2s ease;" data-title="{{ e.title }}" data-classroom="{{ e.classroom_id }}" data-status="{{ s }}">
+          <!-- Title -->
+          <td class="font-semi">{{ e.title }}</td>
+
+          <!-- Classroom -->
+          <td class="text-muted">
+            {% for c in my_classrooms %}
+              {% if c.id == e.classroom_id %}
+                <a href="/classrooms/{{ c.id }}"
+                   style="color:var(--primary);text-decoration:none;">{{ c.name }}</a>
+              {% endif %}
+            {% endfor %}
+          </td>
+
+          <!-- Date -->
+          <td class="text-muted">{{ e.exam_date }}</td>
+
+          <!-- Question count -->
+          <td><span class="badge bdg-primary">{{ e.total_questions }}</span></td>
+
+          <!-- Status -->
+          <td>
+            {% if s == 'draft' %}
+              <span class="badge bdg-gray">
+                <i class="bi bi-pencil-fill"></i> Draft
+              </span>
+            {% elif s == 'active' %}
+              <span class="badge bdg-success">
+                <i class="bi bi-rocket-takeoff-fill"></i> Active
+              </span>
+            {% elif s == 'completed' %}
+              <span class="badge bdg-primary">
+                <i class="bi bi-check2-all"></i> Published
+              </span>
+            {% endif %}
+          </td>
+
+          <!-- Actions -->
+          <td>
+            <div class="flex gap-2" style="flex-wrap:wrap;align-items:center;">
+              <a href="/preview_exam/{{ e.id }}"
+                 class="btn btn-outline btn-sm" title="View exam">
+                <i class="bi bi-eye"></i> View
+              </a>
+
+              <a href="/copy_exam/{{ e.id }}"
+                 class="btn btn-outline btn-sm" title="Copy exam">
+                <i class="bi bi-copy"></i> Copy
+              </a>
+
+              <a href="/delete_exam/{{ e.id }}"
+                 class="btn btn-danger btn-sm" title="Delete exam"
+                 onclick="return confirm('Delete this exam and all its data?')">
+                <i class="bi bi-trash"></i> Delete
+              </a>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <div class="empty">
+    <i class="bi bi-journal-x"></i>
+    <p>No exams yet.
+      {% if my_classrooms %}
+      <a href="/create_exam" style="color:var(--primary);">Create your first →</a>
+      {% endif %}
+    </p>
+  </div>
+  {% endif %}
+
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  const searchInput = document.getElementById('searchInput');
+  const classroomFilter = document.getElementById('classroomFilter');
+  const statusFilter = document.getElementById('statusFilter');
+  const table = document.getElementById('examsTable');
+  const rows = table ? table.querySelectorAll('tbody tr') : [];
+
+  function filterTable() {
+    const searchTerm = searchInput.value.toLowerCase();
+    const classroomValue = classroomFilter.value;
+    const statusValue = statusFilter.value;
+
+    rows.forEach(row => {
+      const title = row.getAttribute('data-title') || '';
+      const classroom = row.getAttribute('data-classroom') || '';
+      const status = row.getAttribute('data-status') || '';
+
+      const matchesSearch = title.toLowerCase().includes(searchTerm);
+      const matchesClassroom = classroomValue === '' || classroom === classroomValue;
+      const matchesStatus = statusValue === '' || status === statusValue;
+
+      if (matchesSearch && matchesClassroom && matchesStatus) {
+        row.style.display = '';
+      } else {
+        row.style.display = 'none';
+      }
+    });
+  }
+
+  searchInput.addEventListener('input', filterTable);
+  classroomFilter.addEventListener('change', filterTable);
+  statusFilter.addEventListener('change', filterTable);
+});
+</script>
+
+{% endblock %}

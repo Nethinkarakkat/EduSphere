@@ -1,0 +1,90 @@
+{% extends "components/base.html" %}
+{% block title %}Student Analytics — EduSphere{% endblock %}
+{% block page_title %}My Analytics{% endblock %}
+{% block page_sub %}Performance insights for your exams{% endblock %}
+{% block topbar_actions %}
+  <a href="/student" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back to Dashboard</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Overview Stats -->
+<div class="stat-grid mb-5">
+  <div class="stat">
+    <div class="stat-ico ico-blue"><i class="bi bi-journal-text"></i></div>
+    <div><div class="stat-val">{{ total_exams }}</div><div class="stat-lbl">Total Exams</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-green"><i class="bi bi-check-circle-fill"></i></div>
+    <div><div class="stat-val">{{ pass_count }}</div><div class="stat-lbl">Passed</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-red"><i class="bi bi-x-circle-fill"></i></div>
+    <div><div class="stat-val">{{ fail_count }}</div><div class="stat-lbl">Failed</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-purple"><i class="bi bi-percent"></i></div>
+    <div><div class="stat-val">{{ "%.1f"|format(pass_rate) }}%</div><div class="stat-lbl">Pass Rate</div></div>
+  </div>
+</div>
+
+<!-- Subject Performance -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-book" style="color:var(--primary);margin-right:6px;"></i>Performance by Subject</h5>
+  </div>
+  <div class="card-body">
+    {% if subject_analytics %}
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Subject</th><th>Average Score</th><th>Attempts</th></tr></thead>
+        <tbody>
+          {% for s in subject_analytics %}
+          <tr>
+            <td class="font-semi">{{ s.subject }}</td>
+            <td><span class="font-bold" style="color:var(--primary);">{{ "%.1f"|format(s.avg_pct) }}%</span></td>
+            <td>{{ s.attempts }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><i class="bi bi-book"></i><p>No subject data available yet.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Recent Results -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-clock-history" style="color:var(--primary);margin-right:6px;"></i>Recent Results</h5>
+  </div>
+  <div class="card-body">
+    {% if results %}
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Exam</th><th>Subject</th><th>Classroom</th><th>Score</th><th>Percentage</th><th>Date</th></tr></thead>
+        <tbody>
+          {% for r in results %}
+          {% set pct = ((r.score/r.total)*100)|round(1) if r.total else 0 %}
+          {% set passed = r.score >= (r.total * (r.pass_percentage or 50) / 100.0) %}
+          <tr>
+            <td class="font-semi">{{ r.exam_title }}</td>
+            <td>{{ r.subject or '—' }}</td>
+            <td>{{ r.classroom_name or '—' }}</td>
+            <td>{{ r.score }}/{{ r.total }}</td>
+            <td><span class="font-bold" style="color:{% if passed %}var(--success){% else %}var(--danger){% endif %};">{{ pct }}%</span></td>
+            <td>{{ r.submitted_at[:10] if r.submitted_at else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty"><i class="bi bi-clock-history"></i><p>No results yet. Take an exam to see your analytics.</p></div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

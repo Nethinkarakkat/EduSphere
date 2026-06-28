@@ -1,0 +1,144 @@
+{% extends "components/base.html" %}
+{% block title %}Validation — EduSphere{% endblock %}
+{% block page_title %}Answer Validation{% endblock %}
+{% block page_sub %}{{ exam.title }}{% endblock %}
+
+{% block topbar_actions %}
+  <a href="/student/results" class="btn btn-outline btn-sm">
+    <i class="bi bi-arrow-left"></i> Back to Result History
+  </a>
+{% endblock %}
+
+{% block content %}
+{% set pct = ((result.score/total)*100)|round(1) if total else 0 %}
+{% set passed = result.score >= (total * (exam.pass_percentage or 50) / 100.0) %}
+
+<!-- Summary strip -->
+<div class="card mb-5" style="background:var(--sidebar-bg);border:none;">
+  <div class="card-body" style="display:flex;gap:32px;flex-wrap:wrap;align-items:center;">
+    <div>
+      <div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;
+                  letter-spacing:.07em;font-weight:600;">Student</div>
+      <div style="color:var(--text);font-weight:700;font-size:15px;">{{ student.name }}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;
+                  letter-spacing:.07em;font-weight:600;">Exam</div>
+      <div style="color:var(--text);font-weight:600;">{{ exam.title }}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;
+                  letter-spacing:.07em;font-weight:600;">Score</div>
+      <div style="color:var(--text);font-weight:700;">{{ result.score }} / {{ total }}</div>
+    </div>
+    <div>
+      <div style="font-size:10px;color:rgba(255,255,255,.45);text-transform:uppercase;
+                  letter-spacing:.07em;font-weight:600;">Percentage</div>
+      <div style="color:var(--text);font-weight:700;">{{ pct }}%</div>
+    </div>
+    <div style="margin-left:auto;">
+      {% if passed %}
+        <span class="badge bdg-success" style="font-size:13px;padding:5px 16px;">
+          <i class="bi bi-trophy-fill"></i> PASSED
+        </span>
+      {% else %}
+        <span class="badge bdg-danger" style="font-size:13px;padding:5px 16px;">
+          <i class="bi bi-x-circle-fill"></i> FAILED
+        </span>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Validation table -->
+<div class="card">
+  <div class="card-head">
+    <h5>
+      <i class="bi bi-patch-check" style="color:var(--primary);margin-right:6px;"></i>
+      Question-by-Question Validation
+    </h5>
+    <div class="flex gap-3 text-sm">
+      <span style="color:var(--success);font-weight:600;">
+        <i class="bi bi-check-circle-fill"></i>
+        {{ result.score }} Correct
+      </span>
+      <span style="color:var(--danger);font-weight:600;">
+        <i class="bi bi-x-circle-fill"></i>
+        {{ total - result.score }} Wrong
+      </span>
+    </div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:36px;">#</th>
+          <th>Question</th>
+          <th>Your Answer</th>
+          <th>Correct Answer</th>
+          <th style="width:90px;">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for q in questions %}
+        {% set student_ans = answer_map.get(q.id, '') %}
+        {% set is_correct  = (student_ans == q.correct_answer) %}
+        <tr style="background:{% if is_correct %}rgba(16,185,129,.04){% else %}rgba(239,68,68,.04){% endif %};">
+
+          <!-- Number -->
+          <td>
+            <span class="q-num"
+                  style="background:{% if is_correct %}var(--success-light){% else %}var(--danger-light){% endif %};
+                         color:{% if is_correct %}var(--success){% else %}var(--danger){% endif %};">
+              {{ loop.index }}
+            </span>
+          </td>
+
+          <!-- Question -->
+          <td style="max-width:300px;font-size:13.5px;">{{ q.question }}</td>
+
+          <!-- Student answer -->
+          <td>
+            {% if student_ans %}
+              <span style="font-size:13px;color:{% if is_correct %}var(--success){% else %}var(--danger){% endif %};
+                           font-weight:500;">
+                {{ student_ans }}
+              </span>
+            {% else %}
+              <span class="text-muted text-sm" style="font-style:italic;">Not answered</span>
+            {% endif %}
+          </td>
+
+          <!-- Correct answer -->
+          <td>
+            <span style="font-size:13px;color:var(--success);font-weight:600;">
+              {{ q.correct_answer }}
+            </span>
+          </td>
+
+          <!-- Status -->
+          <td>
+            {% if is_correct %}
+              <span class="badge bdg-success">
+                <i class="bi bi-check-lg"></i> Correct
+              </span>
+            {% elif not student_ans %}
+              <span class="badge bdg-gray">
+                <i class="bi bi-dash"></i> Skipped
+              </span>
+            {% else %}
+              <span class="badge bdg-danger">
+                <i class="bi bi-x-lg"></i> Wrong
+              </span>
+            {% endif %}
+          </td>
+
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% endblock %}

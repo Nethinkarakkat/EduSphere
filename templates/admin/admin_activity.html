@@ -1,0 +1,71 @@
+{% extends "components/base.html" %}
+{% block title %}Activity Log — EduSphere{% endblock %}
+{% block page_title %}Activity Log{% endblock %}
+{% block page_sub %}Full system activity history{% endblock %}
+{% block topbar_actions %}
+  {% set query_params = request.args.copy() %}
+  <a href="/admin/activity/export?{{ query_params|urlencode }}" class="btn btn-success btn-sm"><i class="bi bi-download"></i> Export CSV</a>
+  <a href="/admin/activity/export/pdf?{{ query_params|urlencode }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i> Export PDF</a>
+{% endblock %}
+
+{% block content %}
+
+<div class="card mb-5">
+  <div class="card-body">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:2;min-width:200px;">
+        <div class="form-label">Search User</div>
+        <input type="text" name="search" class="form-control" placeholder="Name, username, or email" value="{{ search_query or '' }}">
+      </div>
+      <div style="min-width:130px;">
+        <div class="form-label">Role</div>
+        <select name="role" class="form-control">
+          <option value="">All Roles</option>
+          <option value="admin"   {% if sel_role=='admin'   %}selected{% endif %}>Admin</option>
+          <option value="faculty" {% if sel_role=='faculty' %}selected{% endif %}>Faculty</option>
+          <option value="student" {% if sel_role=='student' %}selected{% endif %}>Student</option>
+        </select>
+      </div>
+      <div style="min-width:150px;">
+        <div class="form-label">From Date</div>
+        <input type="date" name="from_date" class="form-control" value="{{ from_date or '' }}">
+      </div>
+      <div style="min-width:150px;">
+        <div class="form-label">To Date</div>
+        <input type="date" name="to_date" class="form-control" value="{{ to_date or '' }}">
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Search</button>
+      {% if search_query or sel_role or from_date or to_date %}<a href="/admin/activity" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Reset</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-activity" style="color:var(--primary);margin-right:6px;"></i>Activity</h5>
+    <span class="badge bdg-gray">{{ logs|length }} records</span>
+  </div>
+  {% if logs %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>User</th><th>Role</th><th>Action</th><th>Time</th></tr></thead>
+    <tbody>
+      {% for l in logs %}
+      <tr>
+        <td class="font-semi">{{ l.name }}</td>
+        <td>
+          {% if l.role=='admin' %}<span class="badge bdg-primary">Admin</span>
+          {% elif l.role=='faculty' %}<span class="badge bdg-info">Faculty</span>
+          {% else %}<span class="badge bdg-success">Student</span>{% endif %}
+        </td>
+        <td>{{ l.action }}</td>
+        <td class="text-muted text-sm">{{ l.timestamp[:16] if l.timestamp else '—' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty"><i class="bi bi-activity"></i><p>No activity recorded yet.</p></div>
+  {% endif %}
+</div>
+
+{% endblock %}

@@ -1,0 +1,146 @@
+{% extends "components/base.html" %}
+{% block title %}{{ classroom.name }} — EduSphere{% endblock %}
+{% block page_title %}{{ classroom.name }}{% endblock %}
+{% block page_sub %}{{ classroom.subject or 'General' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="/student/classrooms" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back to Classrooms</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Classroom Info -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-door-open-fill" style="color:var(--primary);margin-right:6px;"></i>Classroom Details</h5>
+  </div>
+  <div class="card-body">
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;">
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Faculty</div>
+        <div style="font-weight:600;">{{ classroom.faculty_name }}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Classroom Code</div>
+        <div style="font-weight:600;">{{ classroom.code }}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Students</div>
+        <div style="font-weight:600;">{{ student_count }}</div>
+      </div>
+      <div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">Exams</div>
+        <div style="font-weight:600;">{{ exams|length }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Classroom Exams -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-journal-text" style="color:var(--primary);margin-right:6px;"></i>Exams</h5>
+  </div>
+  <div class="card-body">
+    {% if exams %}
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Exam Title</th><th>Subject</th><th>Date</th><th>Duration</th><th>Status</th><th>Submissions</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for e in exams %}
+          <tr>
+            <td class="font-semi">{{ e.title }}</td>
+            <td>{{ e.subject or '—' }}</td>
+            <td>{{ e.exam_date }}</td>
+            <td>{{ e.duration }} min</td>
+            <td>
+              {% if e.student_submission_id %}
+                {% if e.student_result_published == 1 %}
+                <span class="badge bdg-success">Completed</span>
+                {% else %}
+                <span class="badge bdg-warning">Submitted</span>
+                {% endif %}
+              {% elif e.launched == 1 %}
+              <span class="badge bdg-success">Active</span>
+              {% else %}
+              <span class="badge bdg-gray">Draft</span>
+              {% endif %}
+            </td>
+            <td>{{ e.submission_count or 0 }}</td>
+            <td>
+              {% if e.student_submission_id %}
+                {% if e.student_result_published == 1 %}
+                <a href="/view_result/{{ e.id }}" class="btn btn-outline btn-sm" style="text-decoration:none;">View Result</a>
+                {% else %}
+                <span class="text-muted text-sm">Awaiting publication</span>
+                {% endif %}
+              {% elif e.launched == 1 %}
+              <a href="/exam_instructions/{{ e.id }}" class="btn btn-primary btn-sm" style="text-decoration:none;">Start Exam</a>
+              {% else %}
+              <span class="text-muted text-sm">Not available</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:32px;color:var(--muted);">
+      <i class="bi bi-journal-text" style="font-size:36px;margin-bottom:12px;display:block;"></i>
+      <div style="font-size:14px;">No exams in this classroom yet.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- My Submissions -->
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-file-earmark-check-fill" style="color:var(--primary);margin-right:6px;"></i>My Submissions</h5>
+  </div>
+  <div class="card-body">
+    {% if submissions %}
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>Exam Title</th><th>Date</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for s in submissions %}
+          <tr>
+            <td class="font-semi">{{ s.exam_title }}</td>
+            <td>{{ s.submitted_at[:10] if s.submitted_at else '—' }}</td>
+            <td>
+              {% if s.result_published == 1 %}
+              <span class="font-bold" style="color:var(--primary);">{{ s.score }}</span>
+              {% else %}
+              <span class="text-muted">—</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.result_published == 1 %}
+              <span class="badge bdg-success">Published</span>
+              {% else %}
+              <span class="badge bdg-warning">Pending</span>
+              {% endif %}
+            </td>
+            <td>
+              {% if s.result_published == 1 %}
+              <a href="/view_result/{{ s.exam_id }}" class="btn btn-outline btn-sm" style="text-decoration:none;">View Result</a>
+              {% else %}
+              <span class="text-muted text-sm">Awaiting publication</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:32px;color:var(--muted);">
+      <i class="bi bi-file-earmark-check" style="font-size:36px;margin-bottom:12px;display:block;"></i>
+      <div style="font-size:14px;">No submissions yet.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+{% endblock %}

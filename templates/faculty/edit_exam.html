@@ -1,0 +1,61 @@
+{% extends "components/base.html" %}
+{% block title %}Edit Exam — EduSphere{% endblock %}
+{% block page_title %}Edit Exam{% endblock %}
+{% block page_sub %}Update exam details (draft only){% endblock %}
+{% block topbar_actions %}
+  <a href="/faculty" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md">
+
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-pencil-fill" style="color:var(--primary);margin-right:6px;"></i>Edit Exam Details</h5>
+    </div>
+    <div class="card-body">
+      <form method="POST">
+
+        <div class="form-group">
+          <label class="form-label">Exam Title <span style="color:var(--danger);">*</span></label>
+          <input type="text" name="title" class="form-control" value="{{ exam.title }}" required>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Subject</label>
+          <input type="text" name="subject" class="form-control" value="{{ exam.subject or '' }}">
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Exam Date <span style="color:var(--danger);">*</span></label>
+            <input type="date" name="exam_date" class="form-control" value="{{ exam.exam_date }}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Duration (minutes) <span style="color:var(--danger);">*</span></label>
+            <input type="number" name="duration" class="form-control" value="{{ exam.duration }}" min="1" required>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Pass Percentage</label>
+          <input type="number" name="pass_percentage" class="form-control" id="passPercentage" value="{{ exam.pass_percentage or 50 }}" min="0" max="100" step="1" required>
+          <div class="form-hint">Percentage required to pass (0–100). Default: 50%</div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Instructions</label>
+          <textarea name="instructions" class="form-control" rows="4" placeholder="Enter exam instructions for students...">{{ exam.instructions or '' }}</textarea>
+        </div>
+
+        <div class="flex gap-3 mt-3">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Update Exam</button>
+          <a href="/faculty" class="btn btn-ghost">Cancel</a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

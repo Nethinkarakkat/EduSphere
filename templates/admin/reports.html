@@ -1,0 +1,203 @@
+{% extends "components/base.html" %}
+{% block title %}Reports — EduSphere{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+{% block page_sub %}Platform-wide performance overview{% endblock %}
+{% block head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% endblock %}
+{% block topbar_actions %}
+  {% set query_params = request.args.copy() %}
+  <a href="/reports/export/csv?{{ query_params|urlencode }}" class="btn btn-success btn-sm"><i class="bi bi-download"></i> Export CSV</a>
+  <a href="/reports/export/pdf?{{ query_params|urlencode }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i> Export PDF</a>
+  <a href="/reports/export/faculty-csv" class="btn btn-outline btn-sm"><i class="bi bi-people"></i> Faculty CSV</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Filters ── -->
+<div class="card mb-5">
+  <div class="card-head"><h5><i class="bi bi-funnel" style="color:var(--primary);margin-right:6px;"></i>Filters & Search</h5></div>
+  <div class="card-body">
+    <form method="GET">
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px;margin-bottom:12px;">
+        <div>
+          <div class="form-label">Search</div>
+          <input type="text" name="search" value="{{ search }}" class="form-control" placeholder="Student or exam…">
+        </div>
+        <div>
+          <div class="form-label">Student</div>
+          <select name="student" class="form-control">
+            <option value="">All Students</option>
+            {% for s in students %}<option value="{{ s.id }}" {% if sel_student==s.id|string %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <div class="form-label">Exam</div>
+          <select name="exam" class="form-control">
+            <option value="">All Exams</option>
+            {% for e in exams %}<option value="{{ e.id }}" {% if sel_exam==e.id|string %}selected{% endif %}>{{ e.title }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <div class="form-label">Faculty</div>
+          <select name="faculty" class="form-control">
+            <option value="">All Faculty</option>
+            {% for f in faculty_list %}<option value="{{ f.id }}" {% if sel_faculty==f.id|string %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <div class="form-label">From</div>
+          <input type="date" name="date_from" class="form-control" value="{{ date_from }}">
+        </div>
+        <div>
+          <div class="form-label">To</div>
+          <input type="date" name="date_to" class="form-control" value="{{ date_to }}">
+        </div>
+      </div>
+      <div class="flex gap-2">
+        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Apply</button>
+        <a href="/reports" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ── Charts row ── -->
+<div class="g-2 mb-5">
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-bar-chart-fill" style="color:var(--primary);margin-right:6px;"></i>Faculty Performance</h5></div>
+    <div class="card-body"><canvas id="facultyChart" style="max-height:240px;"></canvas></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-pie-chart-fill" style="color:var(--primary);margin-right:6px;"></i>Pass / Fail</h5></div>
+    <div class="card-body" style="display:flex;align-items:center;justify-content:center;">
+      <canvas id="passFailChart" style="max-height:220px;max-width:280px;"></canvas>
+    </div>
+  </div>
+</div>
+
+<!-- ── Faculty performance table ── -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-person-video3" style="color:var(--primary);margin-right:6px;"></i>Faculty Performance</h5>
+    <a href="/reports/export/faculty-csv" class="btn btn-outline btn-sm"><i class="bi bi-download"></i> CSV</a>
+  </div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Faculty</th><th>Exams</th><th>Attempts</th><th>Avg %</th><th>Bar</th></tr></thead>
+    <tbody>
+      {% for f in faculty_stats %}
+      {% set pct = f.avg_pct|round(1) if f.avg_pct else 0 %}
+      <tr>
+        <td class="font-semi">{{ f.faculty_name }}</td>
+        <td><span class="badge bdg-primary">{{ f.exam_count }}</span></td>
+        <td>{{ f.attempt_count }}</td>
+        <td><span class="font-bold" style="color:{% if pct>=50 %}var(--success){% else %}var(--danger){% endif %};">{{ pct }}%</span></td>
+        <td style="min-width:100px;"><div class="prog-wrap"><div class="prog-fill {% if pct>=50 %}success{% else %}danger{% endif %}" style="width:{{ pct }}%;"></div></div></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-center text-muted" style="padding:20px;">No faculty data yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+
+<!-- ── Top & Low students ── -->
+<div class="g-2 mb-5">
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-trophy-fill" style="color:var(--warning);margin-right:6px;"></i>Top Students</h5></div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Rank</th><th>Student</th><th>Avg %</th><th>Exams</th></tr></thead>
+      <tbody>
+        {% for s in top_students %}
+        <tr>
+          <td>{% if loop.index==1 %}🥇{% elif loop.index==2 %}🥈{% elif loop.index==3 %}🥉{% else %}{{ loop.index }}{% endif %}</td>
+          <td class="font-semi">{{ s.name }}</td>
+          <td><span class="font-bold" style="color:var(--success);">{{ s.avg_pct|round(1) }}%</span></td>
+          <td class="text-muted">{{ s.attempts }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="4" class="text-center text-muted" style="padding:20px;">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-arrow-down-circle-fill" style="color:var(--danger);margin-right:6px;"></i>Needs Improvement</h5></div>
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Student</th><th>Avg %</th><th>Exams</th></tr></thead>
+      <tbody>
+        {% for s in low_students %}
+        <tr>
+          <td class="font-semi">{{ s.name }}</td>
+          <td><span class="font-bold" style="color:var(--danger);">{{ s.avg_pct|round(1) }}%</span></td>
+          <td class="text-muted">{{ s.attempts }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-center text-muted" style="padding:20px;">No data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</div>
+
+<!-- ── All results table ── -->
+{% if data %}
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-table" style="color:var(--primary);margin-right:6px;"></i>Student Results</h5>
+    <div class="flex gap-2 items-center">
+      <span class="badge bdg-gray">{{ data|length }} records</span>
+      <a href="/reports/export/csv?{{ query_params|urlencode }}" class="btn btn-success btn-sm"><i class="bi bi-download"></i> CSV</a>
+      <a href="/reports/export/pdf?{{ query_params|urlencode }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i> PDF</a>
+    </div>
+  </div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Student</th><th>Exam</th><th>Subject</th><th>Faculty</th><th>Date</th><th>Score</th><th>%</th><th>Result</th></tr></thead>
+    <tbody>
+      {% for r in data %}
+      {% set pct = ((r.score/r.total)*100)|round(1) if r.total else 0 %}
+      <tr>
+        <td class="font-semi">{{ r.name }}</td>
+        <td>{{ r.title }}</td>
+        <td class="text-muted">{{ r.subject or '—' }}</td>
+        <td class="text-muted">{{ r.faculty_name }}</td>
+        <td class="text-muted">{{ r.exam_date }}</td>
+        <td><span class="font-bold" style="color:var(--primary);">{{ r.score }}/{{ r.total }}</span></td>
+        <td>{{ pct }}%</td>
+        <td>{% if r.score>=r.total/2 %}<span class="badge bdg-success">Pass</span>{% else %}<span class="badge bdg-danger">Fail</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card"><div class="empty"><i class="bi bi-bar-chart"></i><p>No results match the selected filters.</p></div></div>
+{% endif %}
+
+<script>
+// Faculty performance bar
+const fLabels = [{% for f in faculty_stats %}"{{ f.faculty_name }}",{% endfor %}];
+const fData   = [{% for f in faculty_stats %}{{ f.avg_pct|round(1) if f.avg_pct else 0 }},{% endfor %}];
+const fColors = fData.map(v => v>=50 ? 'rgba(16,185,129,.75)' : 'rgba(239,68,68,.75)');
+if (fLabels.length) {
+  new Chart(document.getElementById('facultyChart'), {
+    type:'bar', data:{ labels:fLabels,
+      datasets:[{ label:'Avg %', data:fData, backgroundColor:fColors, borderRadius:5 }]},
+    options:{ responsive:true, plugins:{legend:{display:false}},
+      scales:{ y:{beginAtZero:true,max:100,grid:{color:'#f1f5f9'}}, x:{grid:{display:false}} }}
+  });
+}
+// Pass/Fail doughnut
+const allData = [{% for r in data %}{ score:{{ r.score }}, total:{{ r.total }} },{% endfor %}];
+const passes  = allData.filter(r => r.score >= r.total/2).length;
+const fails   = allData.length - passes;
+if (allData.length) {
+  new Chart(document.getElementById('passFailChart'), {
+    type:'doughnut', data:{ labels:['Pass','Fail'],
+      datasets:[{ data:[passes,fails], backgroundColor:['rgba(16,185,129,.8)','rgba(239,68,68,.8)'], borderWidth:0 }]},
+    options:{ plugins:{legend:{position:'bottom'}}, cutout:'65%' }
+  });
+}
+</script>
+
+{% endblock %}

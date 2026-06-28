@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}EduSphere{% endblock %}</title>
+  <!-- CRITICAL: Load ThemeManager BEFORE CSS to prevent theme flash -->
+  <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="sb-brand">
+      <div class="sb-brand-row">
+        <img src="{{ url_for('static', filename='images/logo.png') }}" alt="EduSphere Logo" class="sb-logo-img">
+        <div class="sb-brand-text-container">
+          <div class="sb-brand-name">EduSphere</div>
+          <div class="sb-brand-sub">Examination System</div>
+        </div>
+      </div>
+    </div>
+    <nav class="sb-nav">
+
+      {% if session.get("role") == "admin" %}
+      <div class="sb-section">Main</div>
+      <a href="/admin"          class="sb-link {% if request.path=='/admin' %}active{% endif %}"><i class="bi bi-grid-fill"></i> Dashboard</a>
+      <a href="/admin/users"    class="sb-link {% if '/admin/users' in request.path %}active{% endif %}"><i class="bi bi-people-fill"></i> Users</a>
+      <a href="/add_user"       class="sb-link {% if request.path=='/add_user' %}active{% endif %}"><i class="bi bi-person-plus-fill"></i> Add User</a>
+      <a href="/admin/classrooms" class="sb-link {% if '/admin/classrooms' in request.path %}active{% endif %}"><i class="bi bi-door-closed-fill"></i> Classrooms</a>
+      <a href="/admin/exams"    class="sb-link {% if '/admin/exams' in request.path %}active{% endif %}"><i class="bi bi-journal-text"></i> Exams</a>
+      <a href="/admin/reports"   class="sb-link {% if '/admin/reports' in request.path %}active{% endif %}"><i class="bi bi-bar-chart-fill"></i> Reports</a>
+      <a href="/admin/activity" class="sb-link {% if request.path=='/admin/activity' %}active{% endif %}"><i class="bi bi-activity"></i> Activity Log</a>
+      <div class="sb-section">Account</div>
+      <a href="/admin/profile"  class="sb-link {% if request.path=='/admin/profile' %}active{% endif %}"><i class="bi bi-person-fill"></i> Profile</a>
+      <a href="/admin/change_password" class="sb-link {% if request.path=='/admin/change_password' %}active{% endif %}"><i class="bi bi-shield-lock-fill"></i> Change Password</a>
+      {% endif %}
+
+      {% if session.get("role") == "faculty" %}
+      <div class="sb-section">Main</div>
+      <a href="/faculty"       class="sb-link {% if request.path=='/faculty' %}active{% endif %}"><i class="bi bi-grid-fill"></i> Dashboard</a>
+      <a href="/create_exam"   class="sb-link {% if request.path=='/create_exam' %}active{% endif %}"><i class="bi bi-plus-circle-fill"></i> Create Exam</a>
+      <a href="/faculty/exams" class="sb-link {% if request.path=='/faculty/exams' %}active{% endif %}"><i class="fas fa-file-lines"></i> Exams</a>
+      <a href="/classrooms"    class="sb-link {% if '/classroom' in request.path %}active{% endif %}"><i class="bi bi-people-fill"></i> Classrooms</a>
+      <div class="sb-section">Resources</div>
+      <a href="/question_bank" class="sb-link {% if request.path=='/question_bank' %}active{% endif %}"><i class="bi bi-collection-fill"></i> Question Bank</a>
+      <a href="/faculty/analytics" class="sb-link {% if '/faculty/analytics' in request.path %}active{% endif %}"><i class="bi bi-graph-up"></i> Analytics</a>
+      <a href="/faculty/results"   class="sb-link {% if '/faculty/results' in request.path %}active{% endif %}"><i class="bi bi-bar-chart"></i> Reports</a>
+      <a href="/faculty/integrity" class="sb-link {% if '/faculty/integrity' in request.path %}active{% endif %}"><i class="bi bi-shield-exclamation"></i> Integrity</a>
+      <a href="/faculty/archive"   class="sb-link {% if '/faculty/archive' in request.path %}active{% endif %}"><i class="bi bi-archive-fill"></i> Archive Center</a>
+      <div class="sb-section">Account</div>
+      <a href="/faculty/profile"         class="sb-link {% if request.path=='/faculty/profile' %}active{% endif %}"><i class="bi bi-person-circle"></i> Profile</a>
+      <a href="/faculty/change_password" class="sb-link {% if request.path=='/faculty/change_password' %}active{% endif %}"><i class="bi bi-key-fill"></i> Change Password</a>
+      {% endif %}
+
+      {% if session.get("role") == "student" %}
+      <div class="sb-section">Main</div>
+      <a href="/student"        class="sb-link {% if request.path=='/student' %}active{% endif %}"><i class="bi bi-grid-fill"></i> Dashboard</a>
+      <a href="/student/classrooms" class="sb-link {% if request.path=='/student/classrooms' %}active{% endif %}"><i class="bi bi-door-open-fill"></i> My Classrooms</a>
+      <a href="/join_classroom" class="sb-link {% if request.path=='/join_classroom' %}active{% endif %}"><i class="bi bi-box-arrow-in-right"></i> Join Classroom</a>
+      <a href="/student/exams" class="sb-link {% if request.path=='/student/exams' %}active{% endif %}"><i class="bi bi-journal-text"></i> Exams</a>
+      <div class="sb-section">Resources</div>
+      <a href="/student/results" class="sb-link {% if '/student/results' in request.path %}active{% endif %}"><i class="bi bi-clock-history"></i> Results</a>
+      <a href="/student/analytics" class="sb-link {% if '/student/analytics' in request.path %}active{% endif %}"><i class="bi bi-graph-up"></i> Analytics</a>
+      <div class="sb-section">Account</div>
+      <a href="/student/profile"  class="sb-link {% if request.path=='/student/profile' %}active{% endif %}"><i class="bi bi-person-circle"></i> Profile</a>
+      <a href="/student/change_password" class="sb-link {% if request.path=='/student/change_password' %}active{% endif %}"><i class="bi bi-key-fill"></i> Change Password</a>
+      {% endif %}
+
+    </nav>
+    <div class="sb-footer">
+      {% if session.get("role") %}
+      <div class="sb-user">
+        <div class="sb-avatar" style="width:48px;height:48px;min-width:48px;min-height:48px;">
+          {% set avatar = get_avatar({'name': session.get('name', 'User'), 'profile_picture': session.get('profile_pic')}) %}
+          {% set initial = session.get("name","U")[0]|upper %}
+          {% if avatar %}
+            <img src="{{ avatar }}" alt="Profile" style="width:48px;height:48px;object-fit:cover;object-position:center;border-radius:50%;" data-initial="{{ initial }}" onerror="this.style.display='none'; this.parentElement.style.background='var(--primary-light)'; this.parentElement.innerHTML=this.dataset.initial;">
+          {% else %}
+            <div style="width:48px;height:48px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:600;font-size:19px;color:var(--primary);">
+              {{ initial }}
+            </div>
+          {% endif %}
+        </div>
+        <div><div class="sb-uname">{{ session.get("name","User") }}</div><div class="sb-urole">{{ session.get("role") }}</div></div>
+      </div>
+      {% endif %}
+      <a href="/logout" class="sb-logout"><i class="bi bi-box-arrow-left"></i> Logout</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+        <p>{% block page_sub %}{% endblock %}</p>
+      </div>
+      <div class="topbar-right">
+        {% if session.get("role") %}
+        <button id="themeToggle" class="btn btn-ghost btn-sm" onclick="window.themeManager.toggleTheme()" title="Toggle Theme">
+          <i class="bi bi-moon-stars" id="themeIcon"></i>
+        </button>
+        {% endif %}
+        {% block topbar_actions %}{% endblock %}
+      </div>
+    </header>
+    <main class="page">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}{% for cat, msg in messages %}
+          <div class="alert alert-{{ cat }}" style="margin-bottom:16px;">
+            <i class="bi bi-{% if cat=='success' %}check-circle-fill{% else %}exclamation-circle-fill{% endif %}"></i> {{ msg }}
+          </div>
+        {% endfor %}{% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</div>
+<!-- Core global scripts — OUTSIDE block so child templates cannot override -->
+<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css">
+<script>
+function showConfirm(title, message, confirmUrl) {
+  if (confirm(title + '\n\n' + message)) {
+    window.location.href = confirmUrl;
+  }
+}
+// ThemeManager handles icon sync via themeChanged event — no duplicate logic here.
+</script>
+
+<!-- Crop Modal -->
+<div id="cropModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg);border-radius:12px;padding:24px;max-width:600px;width:90%;max-height:90vh;overflow-y:auto;">
+    <h3 style="margin:0 0 16px 0;color:var(--text);">Crop Profile Picture</h3>
+    <div style="margin-bottom:16px;">
+      <img id="cropImage" style="max-width:100%;display:block;">
+    </div>
+    <div style="margin-bottom:16px;">
+      <label style="display:block;margin-bottom:8px;font-weight:600;color:var(--text);">Zoom</label>
+      <input type="range" id="zoomSlider" min="0.1" max="3" step="0.1" value="1" style="width:100%;">
+    </div>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button type="button" onclick="closeCropModal()" style="padding:8px 16px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);border-radius:6px;cursor:pointer;">Cancel</button>
+      <button type="button" onclick="saveCroppedImage()" style="padding:8px 16px;border:none;background:var(--primary);color:var(--white);border-radius:6px;cursor:pointer;">Save Photo</button>
+    </div>
+  </div>
+</div>
+
+<!-- Permanent Delete Confirmation Modal -->
+<div id="deleteModal" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.8);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:var(--card-bg);border-radius:12px;padding:24px;max-width:400px;width:90%;">
+    <h3 style="margin:0 0 16px 0;color:var(--text);">Delete Permanently?</h3>
+    <p style="margin:0 0 24px 0;color:var(--muted);font-size:14px;">This action cannot be undone.<br>The selected item will be permanently removed from the system.</p>
+    <div style="display:flex;gap:12px;justify-content:flex-end;">
+      <button type="button" onclick="closeDeleteModal()" style="padding:8px 16px;border:1px solid var(--border);background:var(--card-bg);color:var(--text);border-radius:6px;cursor:pointer;">Cancel</button>
+      <button type="button" id="confirmDeleteBtn" style="padding:8px 16px;border:none;background:var(--danger);color:var(--white);border-radius:6px;cursor:pointer;">Delete Permanently</button>
+    </div>
+  </div>
+</div>
+
+{% block scripts %}
+{% endblock %}
+
+<script>
+let cropper;
+let currentUploadUrl;
+
+function openCropModal(file, uploadUrl) {
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const image = document.getElementById('cropImage');
+    image.src = e.target.result;
+    document.getElementById('cropModal').style.display = 'flex';
+    currentUploadUrl = uploadUrl;
+    if (cropper) { cropper.destroy(); }
+    cropper = new Cropper(image, {
+      aspectRatio: 1, viewMode: 1, autoCropArea: 1,
+      responsive: true, movable: true, zoomable: true,
+      rotatable: true, scalable: false,
+    });
+  };
+  reader.readAsDataURL(file);
+}
+
+function closeCropModal() {
+  document.getElementById('cropModal').style.display = 'none';
+  if (cropper) { cropper.destroy(); cropper = null; }
+  document.getElementById('cropImage').src = '';
+}
+
+let deleteUrl = '';
+
+function openDeleteModal(url) {
+  deleteUrl = url;
+  document.getElementById('deleteModal').style.display = 'flex';
+}
+
+function closeDeleteModal() {
+  document.getElementById('deleteModal').style.display = 'none';
+  deleteUrl = '';
+}
+
+document.getElementById('confirmDeleteBtn').addEventListener('click', function() {
+  if (deleteUrl) {
+    window.location.href = deleteUrl;
+  }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+  const slider = document.getElementById('zoomSlider');
+  if (slider) {
+    slider.addEventListener('input', function(e) {
+      if (cropper) cropper.zoomTo(e.target.value);
+    });
+  }
+});
+
+function saveCroppedImage() {
+  if (!cropper) return;
+  const canvas = cropper.getCroppedCanvas({ width: 300, height: 300, imageSmoothingQuality: 'high' });
+  canvas.toBlob(function(blob) {
+    const formData = new FormData();
+    formData.append('profile_pic', blob, 'profile.jpg');
+    fetch(currentUploadUrl, { method: 'POST', body: formData })
+    .then(response => {
+      const contentType = response.headers.get("content-type");
+      if (!contentType || !contentType.includes("application/json")) {
+        return response.text().then(text => { throw new Error("Server returned invalid response."); });
+      }
+      return response.json();
+    })
+    .then(data => {
+      if (data.success) { closeCropModal(); location.reload(); }
+      else { alert('Error: ' + (data.error || data.message || 'Unknown error')); }
+    })
+    .catch(error => { alert('Error uploading image: ' + error.message); });
+  }, 'image/jpeg', 0.9);
+}
+</script>
+</body>
+</html>

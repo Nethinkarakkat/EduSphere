@@ -1,0 +1,199 @@
+{% extends "components/base.html" %}
+{% block title %}Admin Dashboard — EduSphere{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Welcome back, {{ session.get("name") }}{% endblock %}
+{% block topbar_actions %}
+  <a href="/admin/users" class="btn btn-outline btn-sm"><i class="bi bi-people"></i> Users</a>
+  <a href="/add_user"    class="btn btn-primary btn-sm"><i class="bi bi-person-plus-fill"></i> Add User</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Top Dashboard Row: Students, Faculty, Classrooms, Exams -->
+<div class="g-4 mb-5">
+  <div class="stat">
+    <div class="stat-ico ico-blue"><i class="bi bi-people-fill"></i></div>
+    <div><div class="stat-val">{{ students }}</div><div class="stat-lbl">Total Students</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-green"><i class="bi bi-person-video3"></i></div>
+    <div><div class="stat-val">{{ faculty }}</div><div class="stat-lbl">Total Faculty</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-yellow"><i class="bi bi-door-closed-fill"></i></div>
+    <div><div class="stat-val">{{ total_classrooms }}</div><div class="stat-lbl">Total Classrooms</div></div>
+  </div>
+  <div class="stat">
+    <div class="stat-ico ico-purple"><i class="bi bi-journal-text"></i></div>
+    <div><div class="stat-val">{{ exams }}</div><div class="stat-lbl">Total Exams</div></div>
+  </div>
+</div>
+
+<div class="g-2 mb-5">
+  <!-- Faculty Overview -->
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-person-video3" style="color:var(--primary);margin-right:6px;"></i>Faculty Overview</h5>
+      <a href="/admin/users?role=faculty" class="btn btn-ghost btn-sm">View All <i class="bi bi-arrow-right"></i></a>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+        <div><span class="text-muted text-sm">Total Faculty</span><div class="font-bold" style="font-size:24px;">{{ faculty }}</div></div>
+        <div><span class="text-muted text-sm">Active</span><div class="font-bold" style="font-size:24px;color:var(--success);">{{ active_faculty }}</div></div>
+        <div><span class="text-muted text-sm">Pending</span><div class="font-bold" style="font-size:24px;color:var(--warning);">{{ pending_faculty }}</div></div>
+      </div>
+      {% if faculty_list %}
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>Faculty Name</th><th>Classrooms</th><th>Exams</th><th>Students</th></tr></thead>
+        <tbody>
+          {% for f in faculty_list[:5] %}
+          <tr>
+            <td>
+              <div style="display:flex;align-items:center;gap:10px;">
+                <div style="width:36px;height:36px;border-radius:50%;overflow:hidden;display:flex;align-items:center;justify-content:center;background:var(--primary-light);flex-shrink:0;">
+                  {% set avatar = get_avatar(f) %}
+                  {% set initial = f["name"][0]|upper if f and "name" in f else "U" %}
+                  {% if avatar %}
+                    <img src="{{ avatar }}" alt="Profile" style="width:36px;height:36px;object-fit:cover;object-position:center;border-radius:50%;" data-initial="{{ initial }}" onerror="this.style.display='none'; this.parentElement.style.background='var(--primary-light)'; this.parentElement.innerHTML=this.dataset.initial;">
+                  {% else %}
+                    <div style="width:36px;height:36px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:var(--primary);">
+                      {{ initial }}
+                    </div>
+                  {% endif %}
+                </div>
+                <div>
+                  <div class="font-semi">{{ f.name }}</div>
+                  <div class="text-muted text-sm">{{ f.email }}</div>
+                </div>
+              </div>
+            </td>
+            <td><span class="badge bdg-primary">{{ f.classroom_count if f.classroom_count else 0 }}</span></td>
+            <td><span class="badge bdg-info">{{ f.exam_count if f.exam_count else 0 }}</span></td>
+            <td><span class="badge bdg-success">{{ f.student_count if f.student_count else 0 }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}
+      <div class="text-center text-muted" style="padding:20px;">No faculty data yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Classroom Overview -->
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-door-closed-fill" style="color:var(--info);margin-right:6px;"></i>Classroom Overview</h5>
+      <a href="/admin/classrooms" class="btn btn-ghost btn-sm">View All <i class="bi bi-arrow-right"></i></a>
+    </div>
+    <div class="card-body">
+      <div style="display:flex;justify-content:space-between;margin-bottom:16px;">
+        <div><span class="text-muted text-sm">Total Classrooms</span><div class="font-bold" style="font-size:24px;">{{ total_classrooms }}</div></div>
+        <div><span class="text-muted text-sm">Total Students</span><div class="font-bold" style="font-size:24px;">{{ students }}</div></div>
+        <div><span class="text-muted text-sm">Active Exams</span><div class="font-bold" style="font-size:24px;color:var(--success);">{{ active_exams }}</div></div>
+      </div>
+      {% if classroom_list %}
+      <div class="tbl-wrap"><table class="tbl">
+        <thead><tr><th>Classroom Name</th><th>Student Count</th></tr></thead>
+        <tbody>
+          {% for c in classroom_list[:5] %}
+          <tr>
+            <td class="font-semi">{{ c.name }}</td>
+            <td><span class="badge bdg-info">{{ c.student_count if c.student_count else 0 }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+      {% else %}
+      <div class="text-center text-muted" style="padding:20px;">No classroom data yet.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Pending approvals -->
+{% if pending %}
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-hourglass-split" style="color:var(--warning);margin-right:6px;"></i>Pending Faculty Approvals</h5>
+    <span class="badge bdg-warning">{{ pending|length }}</span>
+  </div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Name</th><th>Email</th><th>Action</th></tr></thead>
+    <tbody>
+      {% for p in pending %}
+      <tr>
+        <td class="font-semi">{{ p.name }}</td>
+        <td class="text-muted">{{ p.email }}</td>
+        <td><a href="/approve/{{ p.id }}" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Approve</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% endif %}
+
+<!-- Recent activity -->
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-activity" style="color:var(--primary);margin-right:6px;"></i>Recent Activity</h5>
+    <a href="/admin/activity" class="btn btn-ghost btn-sm">View All <i class="bi bi-arrow-right"></i></a>
+  </div>
+  <div style="max-height:220px;overflow-y:auto;">
+    <table class="tbl">
+      <tbody>
+        {% for a in activity %}
+        <tr>
+          <td style="width:28%;">
+            <span class="font-semi">{{ a.name }}</span>
+            <span class="badge {% if a.role=='admin' %}bdg-primary{% elif a.role=='faculty' %}bdg-info{% else %}bdg-success{% endif %}" style="margin-left:4px;font-size:10px;">{{ a.role }}</span>
+          </td>
+          <td>{{ a.action }}</td>
+          <td class="text-muted text-sm" style="white-space:nowrap;">{{ a.timestamp[:16] if a.timestamp else '' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="3" class="text-center text-muted" style="padding:20px;">No activity yet</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- Quick Statistics -->
+<h4 style="margin:32px 0 16px 0;font-size:18px;font-weight:600;color:var(--text);">Quick Statistics</h4>
+<div class="g-2 mb-5">
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-blue"><i class="bi bi-journal-text"></i></div>
+    <div>
+      <div class="stat-val">{{ total_submissions }}</div>
+      <div class="stat-lbl">Total Submissions</div>
+    </div>
+    <a href="/admin/reports" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-purple"><i class="bi bi-clock-history"></i></div>
+    <div>
+      <div class="stat-val">{{ pending_results }}</div>
+      <div class="stat-lbl">Pending Results</div>
+    </div>
+    <a href="/admin/reports" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-yellow"><i class="bi bi-check-circle-fill"></i></div>
+    <div>
+      <div class="stat-val">{{ passed_students }}</div>
+      <div class="stat-lbl">Passed Students</div>
+    </div>
+    <a href="/admin/reports" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-green"><i class="bi bi-trophy-fill"></i></div>
+    <div>
+      <div class="stat-val">{{ pass_percentage }}%</div>
+      <div class="stat-lbl">Pass Percentage</div>
+    </div>
+    <a href="/admin/reports" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+</div>
+
+{% endblock %}

@@ -1,0 +1,143 @@
+{% extends "components/base.html" %}
+{% block title %}My Results — EduSphere{% endblock %}
+{% block page_title %}Student Results{% endblock %}
+{% block page_sub %}Performance of your students{% endblock %}
+{% block topbar_actions %}
+  {% set query_params = request.args.copy() %}
+  <a href="/faculty/results/export?{{ query_params|urlencode }}" class="btn btn-success btn-sm"><i class="bi bi-download"></i> Export CSV</a>
+  <a href="/faculty/results/export/pdf?{{ query_params|urlencode }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i> Export PDF</a>
+  <a href="{{ request.referrer or '/faculty' }}" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Filter -->
+<div class="card mb-5">
+  <div class="card-head"><h5><i class="bi bi-funnel" style="color:var(--primary);margin-right:6px;"></i>Filter Results</h5></div>
+  <div class="card-body">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:2;min-width:220px;">
+        <div class="form-label">Search</div>
+        <input type="text" name="search" id="resultsSearchInput" class="form-control"
+               placeholder="Search by name, registration no., or email"
+               value="{{ sel_search or '' }}">
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Subject</div>
+        <select name="subject" class="form-control">
+          <option value="">All Subjects</option>
+          {% for s in subjects %}<option value="{{ s }}" {% if sel_subject==s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Classroom</div>
+        <select name="classroom" class="form-control">
+          <option value="">All Classrooms</option>
+          {% for c in classrooms %}<option value="{{ c.id }}" {% if sel_classroom==c.id|string %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Exam</div>
+        <select name="exam" class="form-control">
+          <option value="">All Exams</option>
+          {% for e in my_exams %}<option value="{{ e.id }}" {% if sel_exam==e.id|string %}selected{% endif %}>{{ e.title }}</option>{% endfor %}
+        </select>
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Date From</div>
+        <input type="date" name="date_from" class="form-control" value="{{ sel_date_from or '' }}">
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Date To</div>
+        <input type="date" name="date_to" class="form-control" value="{{ sel_date_to or '' }}">
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Result</div>
+        <select name="result" class="form-control">
+          <option value="">All Results</option>
+          <option value="pass" {% if sel_result=='pass' %}selected{% endif %}>Pass</option>
+          <option value="fail" {% if sel_result=='fail' %}selected{% endif %}>Fail</option>
+        </select>
+      </div>
+      <div style="flex:1;min-width:150px;">
+        <div class="form-label">Sort By</div>
+        <select name="sort" class="form-control">
+          <option value="">Default</option>
+          <option value="score_desc" {% if sel_sort=='score_desc' %}selected{% endif %}>Highest Score</option>
+          <option value="score_asc" {% if sel_sort=='score_asc' %}selected{% endif %}>Lowest Score</option>
+          <option value="date_desc" {% if sel_sort=='date_desc' %}selected{% endif %}>Latest</option>
+          <option value="date_asc" {% if sel_sort=='date_asc' %}selected{% endif %}>Oldest</option>
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Filter</button>
+      {% if sel_subject or sel_classroom or sel_exam or sel_date or sel_result or sel_sort or sel_search %}<a href="/faculty/results" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+{% if results %}
+<!-- Stats row -->
+{% set total_r = results|length %}
+<div class="g-3 mb-5">
+  <div class="stat"><div class="stat-ico ico-blue"><i class="bi bi-people"></i></div>
+    <div><div class="stat-val">{{ total_r }}</div><div class="stat-lbl">Submissions</div></div></div>
+  <div class="stat"><div class="stat-ico ico-green"><i class="bi bi-check-circle"></i></div>
+    <div><div class="stat-val">{{ pass_count }}</div><div class="stat-lbl">Passed</div></div></div>
+  <div class="stat"><div class="stat-ico ico-red"><i class="bi bi-x-circle"></i></div>
+    <div><div class="stat-val">{{ fail_count }}</div><div class="stat-lbl">Failed</div></div></div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-table" style="color:var(--primary);margin-right:6px;"></i>Results</h5>
+    <div class="flex gap-2">
+      <span class="badge bdg-gray">{{ total_r }} records</span>
+    </div>
+  </div>
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>Student</th><th>Exam</th><th>Subject</th><th>Date</th><th>Score</th><th>%</th><th>Result</th></tr></thead>
+    <tbody>
+      {% for r in results %}
+      {% set pct = ((r.score/r.total)*100)|round(1) if r.total else 0 %}
+      {% set passed = r.score >= (r.total * (r.pass_percentage or 50) / 100.0) %}
+      <tr>
+        <td class="font-semi">{{ r.student_name }}</td>
+        <td>{{ r.title }}</td>
+        <td class="text-muted">{{ r.subject or '—' }}</td>
+        <td class="text-muted">{{ r.exam_date }}</td>
+        <td><span class="font-bold" style="color:var(--primary);">{{ r.score }}/{{ r.total }}</span></td>
+        <td>{{ pct }}%</td>
+        <td>
+          {% if passed %}<span class="badge bdg-success">Pass</span>
+          {% else %}<span class="badge bdg-danger">Fail</span>{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card"><div class="empty"><i class="bi bi-bar-chart"></i><p>No results yet for your exams.</p></div></div>
+{% endif %}
+
+<script>
+(function() {
+  var searchInput = document.getElementById('resultsSearchInput');
+  if (!searchInput) return;
+  var debounceTimer;
+  searchInput.addEventListener('input', function() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(function() {
+      searchInput.form.submit();
+    }, 600);
+  });
+  // Restore focus and cursor position after page reload triggered by search
+  if (searchInput.value) {
+    searchInput.focus();
+    var len = searchInput.value.length;
+    searchInput.setSelectionRange(len, len);
+  }
+})();
+</script>
+
+{% endblock %}

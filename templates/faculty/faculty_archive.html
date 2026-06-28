@@ -1,0 +1,187 @@
+{% extends "components/base.html" %}
+{% block title %}Archive Center — EduSphere{% endblock %}
+{% block page_title %}Archive Center{% endblock %}
+{% block page_sub %}Manage your archived classrooms and exams{% endblock %}
+
+{% block content %}
+<style>
+.archive-tabs { display:flex; gap:8px; margin-bottom:24px; }
+.archive-tab {
+  padding:8px 20px; border-radius:6px; border:1px solid var(--border);
+  background:var(--card-bg); color:var(--muted); cursor:pointer;
+  font-size:14px; font-weight:500; text-decoration:none;
+  transition:all .2s;
+}
+.archive-tab.active, .archive-tab:hover {
+  background:var(--primary); color:var(--white); border-color:var(--primary);
+}
+.archive-table { width:100%; border-collapse:collapse; }
+.archive-table th {
+  padding:10px 14px; font-size:11px; font-weight:600;
+  text-transform:uppercase; letter-spacing:.5px;
+  color:var(--muted); border-bottom:1px solid var(--border);
+  text-align:left;
+}
+.archive-table td {
+  padding:12px 14px; font-size:14px; color:var(--text);
+  border-bottom:1px solid var(--border);
+}
+.archive-table tr:last-child td { border-bottom:none; }
+.archive-table tr:hover td { background:var(--hover); }
+.badge-archived {
+  background:#374151; color:#9CA3AF;
+  padding:3px 10px; border-radius:20px; font-size:11px; font-weight:600;
+}
+.empty-archive {
+  text-align:center; padding:48px 24px; color:var(--muted);
+}
+.empty-archive .icon { font-size:48px; margin-bottom:12px; }
+.empty-archive p { font-size:14px; }
+.btn-restore {
+  padding:5px 12px; font-size:12px; border-radius:5px;
+  background:var(--primary-light); color:var(--primary);
+  border:1px solid var(--primary); font-weight:600;
+  text-decoration:none; cursor:pointer; display:inline-block;
+  transition:all .2s;
+}
+.btn-restore:hover { background:var(--primary); color:var(--white); }
+.btn-del-perm {
+  padding:5px 12px; font-size:12px; border-radius:5px;
+  background:transparent; color:#ef4444;
+  border:1px solid #ef4444; font-weight:600;
+  text-decoration:none; cursor:pointer; display:inline-block;
+  transition:all .2s;
+}
+.btn-del-perm:hover { background:var(--danger); color:var(--white); }
+</style>
+
+<!-- Tabs -->
+<div class="archive-tabs">
+  <a href="#classrooms" class="archive-tab active" onclick="showTab('classrooms',this)">
+    <i class="bi bi-people-fill"></i> Classrooms
+    {% if archived_classrooms %}<span style="margin-left:6px;background:var(--primary);color:var(--white);padding:1px 7px;border-radius:10px;font-size:11px;">{{ archived_classrooms|length }}</span>{% endif %}
+  </a>
+  <a href="#exams" class="archive-tab" onclick="showTab('exams',this)">
+    <i class="bi bi-journal-text"></i> Exams
+    {% if archived_exams %}<span style="margin-left:6px;background:var(--primary);color:var(--white);padding:1px 7px;border-radius:10px;font-size:11px;">{{ archived_exams|length }}</span>{% endif %}
+  </a>
+</div>
+
+<!-- Archived Classrooms -->
+<div id="tab-classrooms">
+  <div class="card">
+    <div class="card-head" style="display:flex;align-items:center;justify-content:space-between;">
+      <h5><i class="bi bi-people-fill" style="color:var(--primary);margin-right:8px;"></i>Archived Classrooms</h5>
+      <span style="font-size:12px;color:var(--muted);">Only you can see and restore these</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if archived_classrooms %}
+      <table class="archive-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Classroom</th>
+            <th>Subject</th>
+            <th>Code</th>
+            <th>Archived On</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in archived_classrooms %}
+          <tr>
+            <td style="color:var(--muted);">{{ loop.index }}</td>
+            <td><strong>{{ c.name }}</strong></td>
+            <td>{{ c.subject or '—' }}</td>
+            <td><code style="background:var(--hover);padding:2px 6px;border-radius:4px;font-size:12px;">{{ c.code }}</code></td>
+            <td style="color:var(--muted);font-size:13px;">{{ c.archived_at[:10] if c.archived_at else '—' }}</td>
+            <td style="display:flex;gap:8px;align-items:center;">
+              <a href="/faculty/archive/restore_classroom/{{ c.id }}" class="btn-restore"
+                 onclick="return confirm('Restore classroom and all its exams?')">
+                <i class="bi bi-arrow-counterclockwise"></i> Restore
+              </a>
+              <button type="button" class="btn-del-perm"
+                 onclick="openDeleteModal('/faculty/archive/delete_classroom/{{ c.id }}')">
+                <i class="bi bi-trash3"></i> Delete
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-archive">
+        <div class="icon">🗂️</div>
+        <strong>No Archived Classrooms</strong>
+        <p>Deleted classrooms will appear here instead of being permanently removed.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<!-- Archived Exams -->
+<div id="tab-exams" style="display:none;">
+  <div class="card">
+    <div class="card-head" style="display:flex;align-items:center;justify-content:space-between;">
+      <h5><i class="bi bi-journal-text" style="color:var(--primary);margin-right:8px;"></i>Archived Exams</h5>
+      <span style="font-size:12px;color:var(--muted);">Only you can see and restore these</span>
+    </div>
+    <div class="card-body" style="padding:0;">
+      {% if archived_exams %}
+      <table class="archive-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>Exam Title</th>
+            <th>Classroom</th>
+            <th>Date</th>
+            <th>Archived On</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for e in archived_exams %}
+          <tr>
+            <td style="color:var(--muted);">{{ loop.index }}</td>
+            <td><strong>{{ e.title }}</strong></td>
+            <td>{{ e.classroom_name or '—' }}</td>
+            <td style="color:var(--muted);font-size:13px;">{{ e.exam_date or '—' }}</td>
+            <td style="color:var(--muted);font-size:13px;">{{ e.archived_at[:10] if e.archived_at else '—' }}</td>
+            <td style="display:flex;gap:8px;align-items:center;">
+              <a href="/faculty/archive/restore_exam/{{ e.id }}" class="btn-restore"
+                 onclick="return confirm('Restore exam?')">
+                <i class="bi bi-arrow-counterclockwise"></i> Restore
+              </a>
+              <button type="button" class="btn-del-perm"
+                 onclick="openDeleteModal('/faculty/archive/delete_exam/{{ e.id }}')">
+                <i class="bi bi-trash3"></i> Delete
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty-archive">
+        <div class="icon">📝</div>
+        <strong>No Archived Exams</strong>
+        <p>Deleted exams will appear here instead of being permanently removed.</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+{% block scripts %}
+<script>
+function showTab(tab, el) {
+  document.getElementById('tab-classrooms').style.display = tab === 'classrooms' ? 'block' : 'none';
+  document.getElementById('tab-exams').style.display = tab === 'exams' ? 'block' : 'none';
+  document.querySelectorAll('.archive-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  return false;
+}
+</script>
+{% endblock %}
+{% endblock %}

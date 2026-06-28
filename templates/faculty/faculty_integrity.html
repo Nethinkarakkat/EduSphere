@@ -1,0 +1,89 @@
+{% extends "components/base.html" %}
+{% block title %}Exam Integrity — EduSphere{% endblock %}
+{% block page_title %}Exam Integrity{% endblock %}
+{% block page_sub %}Students flagged for tab switching{% endblock %}
+{% block topbar_actions %}
+  <a href="/faculty" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Filter -->
+<div class="card mb-5">
+  <div class="card-body">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;">
+        <div class="form-label">Filter by Exam</div>
+        <select name="exam" class="form-control">
+          <option value="">All Exams</option>
+          {% for e in my_exams %}
+          <option value="{{ e.id }}" {% if sel_exam==e.id|string %}selected{% endif %}>{{ e.title }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Filter</button>
+      {% if sel_exam %}<a href="/faculty/integrity" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+{% if flags %}
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-shield-exclamation" style="color:var(--danger);margin-right:6px;"></i>
+      Flagged Submissions
+    </h5>
+    <span class="badge bdg-danger">{{ flags|length }} flagged</span>
+  </div>
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead>
+        <tr>
+          <th>Student Name</th>
+          <th>Exam</th>
+          <th>Date</th>
+          <th>Score</th>
+          <th>Tab Switches</th>
+          <th>Risk Level</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in flags %}
+        {% set pct = ((f.score/f.total)*100)|round(1) if f.total else 0 %}
+        <tr>
+          <td class="font-semi">{{ f.student_name }}</td>
+          <td>{{ f.exam_title }}</td>
+          <td class="text-muted">{{ f.exam_date if f.exam_date else '—' }}</td>
+          <td><span class="font-bold" style="color:var(--primary);">{{ f.score }}/{{ f.total }}</span> ({{ pct }}%)</td>
+          <td>
+            <span class="font-bold" style="font-size:16px;
+              color:{% if f.tab_switches >= 3 %}var(--danger){% elif f.tab_switches == 2 %}var(--warning){% else %}var(--text-muted){% endif %};">
+              {{ f.tab_switches }}
+            </span>
+          </td>
+          <td>
+            {% if f.tab_switches >= 3 %}
+              <span class="badge bdg-danger"><i class="bi bi-exclamation-octagon-fill"></i> High</span>
+            {% elif f.tab_switches == 2 %}
+              <span class="badge bdg-warning"><i class="bi bi-exclamation-triangle-fill"></i> Medium</span>
+            {% else %}
+              <span class="badge bdg-gray"><i class="bi bi-info-circle"></i> Low</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% else %}
+<div class="card">
+  <div class="empty">
+    <i class="bi bi-shield-check" style="color:var(--success);"></i>
+    <p>No tab switching detected{% if sel_exam %} for this exam{% endif %}. All clear.</p>
+  </div>
+</div>
+{% endif %}
+
+{% endblock %}

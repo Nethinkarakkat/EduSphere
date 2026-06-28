@@ -1,0 +1,155 @@
+{% extends "components/base.html" %}
+{% block title %}Add Questions — EduSphere{% endblock %}
+{% block page_title %}Add Questions{% endblock %}
+{% block page_sub %}{{ exam.title if exam else '' }}{% endblock %}
+{% block topbar_actions %}
+  <a href="/select_questions/{{ exam_id }}" class="btn btn-outline btn-sm">
+    <i class="bi bi-collection"></i> Import from Bank
+  </a>
+  <a href="/preview_exam/{{ exam_id }}" class="btn btn-outline btn-sm">
+    <i class="bi bi-eye"></i> Preview
+  </a>
+  {% if exam and exam.launched == 0 and q_count > 0 %}
+  <a href="/launch_exam/{{ exam_id }}" class="btn btn-success btn-sm"
+     onclick="return confirm('Launch this exam? Students will be able to attempt it.')">
+    <i class="bi bi-rocket-takeoff"></i> Launch
+  </a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="g-2">
+
+  <!-- ── Add question form ── -->
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h5><i class="bi bi-plus-circle" style="color:var(--primary);margin-right:6px;"></i>New Question</h5>
+        <span class="badge bdg-primary">{{ q_count }} added</span>
+      </div>
+      <div class="card-body">
+        <form method="POST" id="addForm">
+          <div class="form-group">
+            <label class="form-label">Question <span style="color:var(--danger)">*</span></label>
+            <input type="text" name="question" id="qInput" class="form-control"
+                   placeholder="Enter question text" required>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Option A <span style="color:var(--danger)">*</span></label>
+              <input type="text" name="o1" class="form-control" placeholder="Option A" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Option B <span style="color:var(--danger)">*</span></label>
+              <input type="text" name="o2" class="form-control" placeholder="Option B" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Option C <span style="color:var(--danger)">*</span></label>
+              <input type="text" name="o3" class="form-control" placeholder="Option C" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Option D <span style="color:var(--danger)">*</span></label>
+              <input type="text" name="o4" class="form-control" placeholder="Option D" required>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Correct Answer <span style="color:var(--danger)">*</span></label>
+              <input type="text" name="answer" class="form-control"
+                     placeholder="Must match one option exactly" required>
+              <div class="form-hint">Type the option text exactly as written above.</div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Difficulty</label>
+              <select name="difficulty" class="form-control">
+                <option value="easy">Easy</option>
+                <option value="medium" selected>Medium</option>
+                <option value="hard">Hard</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label">Marks</label>
+              <input type="number" name="marks" class="form-control" value="1" min="1" required>
+              <div class="form-hint">Points for this question</div>
+            </div>
+          </div>
+          <div class="flex gap-3">
+            <button type="submit" class="btn btn-primary">
+              <i class="bi bi-plus-lg"></i> Add Question
+            </button>
+            <a href="/faculty" class="btn btn-ghost">
+              <i class="bi bi-check-lg"></i> Done
+            </a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Questions added so far ── -->
+  <div>
+    <div class="card">
+      <div class="card-head">
+        <h5><i class="bi bi-list-ol" style="color:var(--primary);margin-right:6px;"></i>Questions Added</h5>
+        <span class="badge bdg-gray">{{ q_count }}</span>
+      </div>
+
+      {% if questions_list %}
+      <div class="tbl-wrap">
+        <table class="tbl">
+          <thead>
+            <tr><th>#</th><th>Question</th><th>Answer</th><th>Marks</th><th>Difficulty</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for q in questions_list %}
+            <tr>
+              <td class="text-muted">{{ loop.index }}</td>
+              <td style="max-width:220px;">{{ q.question }}</td>
+              <td><span class="badge bdg-success" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;">{{ q.correct_answer }}</span></td>
+              <td><span class="badge bdg-primary">{{ q.marks or 1 }}</span></td>
+              <td>
+                <span class="badge {% if q.difficulty=='easy' %}bdg-success{% elif q.difficulty=='hard' %}bdg-danger{% else %}bdg-warning{% endif %}">
+                  {{ q.difficulty or 'medium' }}
+                </span>
+              </td>
+              <td>
+                <a href="/delete_question/{{ q.id }}/{{ exam_id }}"
+                   class="btn btn-danger btn-sm"
+                   onclick="return confirm('Delete this question?')">
+                  <i class="bi bi-trash"></i>
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="empty">
+        <i class="bi bi-question-circle"></i>
+        <p>No questions yet. Add your first question on the left.</p>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+
+</div>
+
+<script>
+// After successful add, clear all form fields and focus question input
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% for cat, msg in messages %}
+    {% if cat == 'success' %}
+    document.getElementById('addForm').reset();
+    document.getElementById('qInput').focus();
+    {% endif %}
+  {% endfor %}
+{% endwith %}
+</script>
+
+{% endblock %}

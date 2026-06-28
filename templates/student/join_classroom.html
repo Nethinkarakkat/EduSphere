@@ -1,0 +1,30 @@
+{% extends "components/base.html" %}
+{% block title %}Join Classroom — EduSphere{% endblock %}
+{% block page_title %}Join Classroom{% endblock %}
+{% block page_sub %}Enter the code your teacher gave you{% endblock %}
+
+{% block topbar_actions %}
+  <a href="/student/classrooms" class="btn btn-outline btn-sm"><i class="bi bi-door-open"></i> My Classrooms</a>
+{% endblock %}
+
+{% block content %}
+<div style="max-width:500px;margin:0 auto;">
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-box-arrow-in-right" style="color:var(--primary);margin-right:6px;"></i>Join Classroom</h5></div>
+    <div class="card-body">
+      <form method="POST">
+        <div class="form-group">
+          <label class="form-label">Classroom Code</label>
+          <input type="text" name="code" class="form-control"
+                 placeholder="e.g. ABC123"
+                 style="font-size:24px;font-weight:700;letter-spacing:.15em;text-transform:uppercase;text-align:center;"
+                 maxlength="6" required
+                 oninput="this.value=this.value.toUpperCase()">
+          <div class="form-hint text-center">Ask your teacher for the 6-character classroom code.</div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-full btn-lg"><i class="bi bi-box-arrow-in-right"></i> Join Classroom</button>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Complete Your Profile — EduSphere</title>
+  <!-- CRITICAL: Load ThemeManager BEFORE CSS to prevent theme flash -->
+  <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
+  <style>
+    .onboard-wrap {
+      min-height: 100vh;
+      background: var(--page-bg);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      padding: 40px 16px 60px;
+    }
+    .onboard-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 640px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.07);
+      overflow: hidden;
+    }
+    .onboard-header {
+      background: var(--primary);
+      padding: 28px 32px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .onboard-header img {
+      height: 48px;
+      width: 48px;
+      object-fit: contain;
+      filter: brightness(0) invert(1);
+    }
+    .onboard-header-text h2 {
+      color: var(--white);
+      font-size: 20px;
+      font-weight: 700;
+      margin: 0 0 2px;
+    }
+    .onboard-header-text p {
+      color: rgba(255,255,255,0.8);
+      font-size: 13px;
+      margin: 0;
+    }
+    .onboard-body {
+      padding: 32px;
+    }
+    .onboard-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--primary-light);
+      color: var(--primary);
+      border-radius: 99px;
+      padding: 4px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 24px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .onboard-section {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin: 24px 0 14px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid var(--primary-light);
+    }
+    .onboard-section:first-of-type { margin-top: 0; }
+    .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 520px) { .form-row { grid-template-columns: 1fr; } }
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+    .form-label .req { color: #ef4444; margin-left: 2px; }
+    .form-control {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      background: var(--card-bg);
+      color: var(--text-primary);
+      box-sizing: border-box;
+    }
+    .form-control:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-light); }
+    .form-control[readonly] { background: var(--page-bg); color: var(--text-secondary); cursor: not-allowed; }
+    .form-helper { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+    .error-box {
+      background: var(--danger-light);
+      border: 1px solid var(--danger);
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 20px;
+    }
+    .error-box ul { margin: 0; padding-left: 18px; }
+    .error-box li { font-size: 13px; color: var(--danger); }
+    [data-theme="dark"] .error-box {
+      background: var(--danger);
+      border-color: var(--danger);
+    }
+    [data-theme="dark"] .error-box li {
+      color: var(--white);
+    }
+    .info-row {
+      display: flex;
+      gap: 16px;
+      background: var(--card-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin-bottom: 24px;
+    }
+    .info-item { flex: 1; }
+    .info-item .lbl { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+    .info-item .val { font-size: 14px; font-weight: 600; color: var(--text-primary); margin-top: 2px; }
+    .onboard-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 28px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border-color);
+    }
+  </style>
+</head>
+<body>
+
+<div class="onboard-wrap">
+  <div class="onboard-card">
+
+    <!-- Header -->
+    <div class="onboard-header">
+      <img src="{{ url_for('static', filename='images/logo.png') }}" alt="EduSphere">
+      <div class="onboard-header-text">
+        <h2>Complete Your Profile</h2>
+        <p>One-time setup before you can access EduSphere</p>
+      </div>
+    </div>
+
+    <!-- Body -->
+    <div class="onboard-body">
+
+      <!-- Role badge -->
+      <div class="onboard-badge">
+        <i class="bi bi-person-badge-fill"></i>
+        {% if session.get('role') == 'faculty' %}Faculty{% else %}Student{% endif %} Account
+      </div>
+
+      <!-- Account info display (read-only) -->
+      <div class="info-row">
+        <div class="info-item">
+          <div class="lbl">Name (from signup)</div>
+          <div class="val">{{ user.name }}</div>
+        </div>
+        <div class="info-item">
+          <div class="lbl">Email</div>
+          <div class="val">{{ user.email }}</div>
+        </div>
+        <div class="info-item">
+          <div class="lbl">Role</div>
+          <div class="val">{{ 'Faculty' if session.get('role') == 'faculty' else 'Student' }}</div>
+        </div>
+        <div class="info-item">
+          <div class="lbl">Joined</div>
+          <div class="val">{{ user.created_at[:10] if user.created_at else '—' }}</div>
+        </div>
+      </div>
+
+      <!-- Validation errors -->
+      {% if errors %}
+      <div class="error-box">
+        <ul>
+          {% for e in errors %}<li>{{ e }}</li>{% endfor %}
+        </ul>
+      </div>
+      {% endif %}
+
+      <!-- Form -->
+      <form method="POST">
+
+        <!-- Personal Information -->
+        <div class="onboard-section">Personal Information</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Full Name <span class="req">*</span></label>
+            <input type="text" name="name" class="form-control" value="{{ user.name or '' }}" required placeholder="Your full name">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone Number <span class="req">*</span></label>
+            <input type="tel" name="phone" class="form-control" value="{{ user.phone or '' }}" required placeholder="e.g. +91 98765 43210">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Date of Birth</label>
+            <input type="date" name="date_of_birth" class="form-control" value="{{ user.date_of_birth or '' }}">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Gender</label>
+            <select name="gender" class="form-control">
+              <option value="">Select Gender</option>
+              <option value="Male"   {% if user.gender == 'Male' %}selected{% endif %}>Male</option>
+              <option value="Female" {% if user.gender == 'Female' %}selected{% endif %}>Female</option>
+              <option value="Other"  {% if user.gender == 'Other' %}selected{% endif %}>Other</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email Address</label>
+          <input type="email" class="form-control" value="{{ user.email }}" readonly>
+          <div class="form-helper">Email cannot be changed here. Contact admin if needed.</div>
+        </div>
+
+        {% if session.get('role') == 'student' %}
+        <!-- Academic Information -->
+        <div class="onboard-section">Academic Information</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Registration / Roll Number <span class="req">*</span></label>
+            <input type="text" name="reg_number" class="form-control" value="{{ user.reg_number or '' }}" required placeholder="e.g. CS2021001">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Program / Course <span class="req">*</span></label>
+            <input type="text" name="program" class="form-control" value="{{ user.program or '' }}" required placeholder="e.g. B.Tech Computer Science">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Section / Batch <span class="req">*</span></label>
+          <input type="text" name="section" class="form-control" value="{{ user.section or '' }}" required placeholder="e.g. Section A, Batch 2024">
+        </div>
+
+        {% else %}
+        <!-- Professional Information (Faculty) -->
+        <div class="onboard-section">Professional Information</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Faculty ID <span class="req">*</span></label>
+            <input type="text" name="faculty_id" class="form-control" value="{{ user.faculty_id or '' }}" required placeholder="e.g. FAC2021001">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Subject <span class="req">*</span></label>
+            <input type="text" name="subject" class="form-control" value="{{ user.subject or '' }}" required placeholder="e.g. Mathematics">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Designation <span class="req">*</span></label>
+          <input type="text" name="designation" class="form-control" value="{{ user.designation or '' }}" required placeholder="e.g. Assistant Professor">
+        </div>
+        {% endif %}
+
+        <!-- Footer actions -->
+        <div class="onboard-footer">
+          <a href="/logout" class="btn btn-ghost btn-sm"><i class="bi bi-box-arrow-left"></i> Logout</a>
+          <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-lg"></i> Save &amp; Continue to Dashboard
+          </button>
+        </div>
+
+      </form>
+    </div><!-- /onboard-body -->
+  </div><!-- /onboard-card -->
+</div><!-- /onboard-wrap -->
+
+</body>
+</html>

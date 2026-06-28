@@ -1,0 +1,148 @@
+{% extends "components/base.html" %}
+{% block title %}View User — EduSphere{% endblock %}
+{% block page_title %}User Details{% endblock %}
+{% block page_sub %}{{ user.name }}{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl">
+  <!-- User Info Card -->
+  <div class="card mb-5">
+    <div class="card-head">
+      <h5><i class="bi bi-person" style="color:var(--primary);margin-right:6px;"></i>User Information</h5>
+    </div>
+    <div class="card-body">
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px;">
+        <div>
+          <div class="text-muted text-sm">Full Name</div>
+          <div class="font-semi">{{ user.name }}</div>
+        </div>
+        <div>
+          <div class="text-muted text-sm">Email</div>
+          <div class="font-semi">{{ user.email }}</div>
+        </div>
+        <div>
+          <div class="text-muted text-sm">Role</div>
+          <div>
+            {% if user.role=='admin' %}<span class="badge bdg-primary">Admin</span>
+            {% elif user.role=='faculty' %}<span class="badge bdg-info">Faculty</span>
+            {% else %}<span class="badge bdg-success">Student</span>{% endif %}
+          </div>
+        </div>
+        <div>
+          <div class="text-muted text-sm">Status</div>
+          <div>
+            {% if user.approved==1 %}<span class="badge bdg-success">Active</span>
+            {% else %}<span class="badge bdg-warning">Pending</span>{% endif %}
+          </div>
+        </div>
+        {% if user.role == 'student' %}
+        <div>
+          <div class="text-muted text-sm">Registration Number</div>
+          <div class="font-semi">{{ user.reg_number if user.reg_number else '—' }}</div>
+        </div>
+        {% endif %}
+        <div>
+          <div class="text-muted text-sm">Joined Date</div>
+          <div>{{ user.created_at[:10] if user.created_at else '—' }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Classrooms -->
+  {% if user.role == 'student' or user.role == 'faculty' %}
+  <div class="card mb-5">
+    <div class="card-head">
+      <h5><i class="bi bi-door-open" style="color:var(--primary);margin-right:6px;"></i>
+        {% if user.role == 'student' %}Joined Classrooms{% else %}Assigned Classrooms{% endif %}
+      </h5>
+      <span class="badge bdg-gray">{{ classrooms|length }}</span>
+    </div>
+    {% if classrooms %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Name</th><th>Subject</th><th>Code</th>{% if user.role == 'student' %}<th>Joined</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for c in classrooms %}
+        <tr>
+          <td class="font-semi">{{ c.name }}</td>
+          <td>{{ c.subject or '—' }}</td>
+          <td class="text-muted">{{ c.code }}</td>
+          {% if user.role == 'student' %}
+          <td class="text-muted text-sm">{{ c.joined_at[:10] if c.joined_at else '—' }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-door-open"></i><p>No classrooms found.</p></div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Exams -->
+  <div class="card mb-5">
+    <div class="card-head">
+      <h5><i class="bi bi-file-earmark-text" style="color:var(--primary);margin-right:6px;"></i>
+        {% if user.role == 'student' %}Exams Attempted{% else %}Exams Created{% endif %}
+      </h5>
+      <span class="badge bdg-gray">{{ exams_attempted|length }}</span>
+    </div>
+    {% if exams_attempted %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Title</th><th>Subject</th><th>Date</th>{% if user.role == 'student' %}<th>Score</th><th>Status</th>{% endif %}</tr></thead>
+      <tbody>
+        {% for e in exams_attempted %}
+        <tr>
+          <td class="font-semi">{{ e.title }}</td>
+          <td>{{ e.subject or '—' }}</td>
+          <td class="text-muted text-sm">{{ e.exam_date or '—' }}</td>
+          {% if user.role == 'student' %}
+          <td class="font-semi">{{ e.score }}/{{ e.total if e.total else '—' }}</td>
+          <td>
+            {% if e.result_published %}<span class="badge bdg-success">Published</span>
+            {% else %}<span class="badge bdg-warning">Pending</span>{% endif %}
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-file-earmark-text"></i><p>No exams found.</p></div>
+    {% endif %}
+  </div>
+
+  <!-- Activity History -->
+  <div class="card mb-5">
+    <div class="card-head">
+      <h5><i class="bi bi-clock-history" style="color:var(--primary);margin-right:6px;"></i>Activity History</h5>
+      <span class="badge bdg-gray">{{ activity_history|length }}</span>
+    </div>
+    {% if activity_history %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Action</th><th>Timestamp</th></tr></thead>
+      <tbody>
+        {% for a in activity_history %}
+        <tr>
+          <td>{{ a.action }}</td>
+          <td class="text-muted text-sm">{{ a.timestamp }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty"><i class="bi bi-clock-history"></i><p>No activity history found.</p></div>
+    {% endif %}
+  </div>
+
+  <!-- Actions -->
+  <div class="flex gap-3">
+    <a href="/admin/users" class="btn btn-outline"><i class="bi bi-arrow-left"></i> Back</a>
+    <a href="/delete_user/{{ user.id }}" class="btn btn-danger"
+       onclick="return confirm('Are you sure you want to permanently delete this user and all associated records? This action cannot be undone.')">
+      <i class="bi bi-trash"></i> Delete User
+    </a>
+  </div>
+</div>
+{% endblock %}

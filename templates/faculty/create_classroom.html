@@ -1,0 +1,31 @@
+{% extends "components/base.html" %}
+{% block title %}Create Classroom — EduSphere{% endblock %}
+{% block page_title %}Create Classroom{% endblock %}
+{% block topbar_actions %}
+  <a href="/classrooms" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-md">
+  <div class="card">
+    <div class="card-head"><h5><i class="bi bi-people-fill" style="color:var(--primary);margin-right:6px;"></i>New Classroom</h5></div>
+    <div class="card-body">
+      <form method="POST">
+        <div class="form-group">
+          <label class="form-label">Classroom Name</label>
+          <input type="text" name="name" class="form-control" placeholder="e.g. Class 10-A, Section B" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subject (optional)</label>
+          <input type="text" name="subject" class="form-control" placeholder="e.g. Mathematics, Science">
+        </div>
+        <div class="alert alert-info"><i class="bi bi-info-circle-fill"></i> A unique 6-character join code will be generated automatically.</div>
+        <div class="flex gap-3">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Create Classroom</button>
+          <a href="/classrooms" class="btn btn-ghost">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

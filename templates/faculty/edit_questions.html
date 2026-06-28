@@ -1,0 +1,43 @@
+{% extends "components/base.html" %}
+{% block title %}Edit Questions — EduSphere{% endblock %}
+{% block page_title %}Edit Questions{% endblock %}
+{% block topbar_actions %}
+  <a href="/add_questions/{{ exam_id }}" class="btn btn-success btn-sm"><i class="bi bi-plus-lg"></i> Add Question</a>
+  <a href="/select_questions/{{ exam_id }}" class="btn btn-outline btn-sm"><i class="bi bi-collection"></i> Import from Bank</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-head">
+    <h5>Questions</h5>
+    <span class="badge bdg-gray">{{ questions|length }}</span>
+  </div>
+  {% if questions %}
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>#</th><th>Question</th><th>Marks</th><th>Difficulty</th><th>Action</th></tr></thead>
+      <tbody>
+        {% for q in questions %}
+        <tr>
+          <td class="text-muted">{{ loop.index }}</td>
+          <td>{{ q.question }}</td>
+          <td><span class="badge bdg-primary">{{ q.marks or 1 }}</span></td>
+          <td>
+            <span class="badge {% if q.difficulty=='easy' %}bdg-success{% elif q.difficulty=='hard' %}bdg-danger{% else %}bdg-warning{% endif %}">
+              {{ q.difficulty or 'medium' }}
+            </span>
+          </td>
+          <td>
+            <a href="/delete_question/{{ q.id }}/{{ exam_id }}" class="btn btn-danger btn-sm"
+               onclick="return confirm('Delete?')"><i class="bi bi-trash"></i></a>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty"><i class="bi bi-question-circle"></i><p>No questions yet.</p></div>
+  {% endif %}
+</div>
+{% endblock %}

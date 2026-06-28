@@ -1,0 +1,63 @@
+{% extends "components/base.html" %}
+{% block title %}Edit Question — EduSphere{% endblock %}
+{% block page_title %}Edit Question{% endblock %}
+
+{% block content %}
+<div class="max-w-md">
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-pencil" style="color:var(--primary);margin-right:6px;"></i>Edit Bank Question</h5>
+    </div>
+    <div class="card-body">
+      <form method="POST">
+        <div class="form-group">
+          <label class="form-label">Question</label>
+          <input type="text" name="question" class="form-control" value="{{ question.question }}" required>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Option A</label>
+            <input type="text" name="o1" class="form-control" value="{{ question.option1 }}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Option B</label>
+            <input type="text" name="o2" class="form-control" value="{{ question.option2 }}" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Option C</label>
+            <input type="text" name="o3" class="form-control" value="{{ question.option3 }}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Option D</label>
+            <input type="text" name="o4" class="form-control" value="{{ question.option4 }}" required>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Correct Answer</label>
+            <input type="text" name="answer" class="form-control" value="{{ question.correct_answer }}" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Category</label>
+            <input type="text" name="category" class="form-control" value="{{ question.category }}">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Difficulty</label>
+          <select name="difficulty" class="form-control">
+            <option value="easy" {% if question.difficulty=='easy' %}selected{% endif %}>Easy</option>
+            <option value="medium" {% if question.difficulty=='medium' or not question.difficulty %}selected{% endif %}>Medium</option>
+            <option value="hard" {% if question.difficulty=='hard' %}selected{% endif %}>Hard</option>
+          </select>
+        </div>
+        <div class="flex gap-3">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save</button>
+          <a href="/question_bank" class="btn btn-ghost"><i class="bi bi-x"></i> Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

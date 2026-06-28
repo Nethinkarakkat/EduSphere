@@ -1,0 +1,222 @@
+{% extends "components/base.html" %}
+{% block title %}{{ room.name }} — EduSphere{% endblock %}
+{% block page_title %}{{ room.name }}{% endblock %}
+{% block page_sub %}
+  {% if session.get('role') == 'admin' %}
+  <a href="{{ request.referrer or '/admin/classrooms' }}" class="breadcrumb-link"><i class="bi bi-arrow-left"></i> Back to Classrooms</a>
+  {% else %}
+  <a href="{{ request.referrer or '/classrooms' }}" class="breadcrumb-link"><i class="bi bi-arrow-left"></i> Back to Classrooms</a>
+  {% endif %}
+  <span class="breadcrumb-separator">|</span>
+  {{ room.subject or '' }}{% if room.subject %} &nbsp;·&nbsp; {% endif %}Code: <strong class="breadcrumb-code">{{ room.code }}</strong>
+{% endblock %}
+{% block topbar_actions %}
+  {% if session.get('role') == 'faculty' %}
+  <button onclick="navigator.clipboard.writeText('{{ room.code }}');this.textContent='Copied!';setTimeout(()=>this.innerHTML='<i class=\'bi bi-copy\'></i> Copy Code',1500)"
+          class="btn btn-outline btn-sm"><i class="bi bi-copy"></i> Copy Code</button>
+  <a href="/classrooms/{{ room.id }}/edit" class="btn btn-outline btn-sm"><i class="bi bi-pencil"></i> Edit</a>
+  <a href="/create_exam" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> New Exam</a>
+  <a href="/classrooms/{{ room.id }}/delete" class="btn btn-danger btn-sm"
+     onclick="return confirm('Delete this classroom? Exams will be unlinked but not deleted.')">
+    <i class="bi bi-trash"></i>
+  </a>
+  {% endif %}
+{% endblock %}
+
+{% block content %}
+<div class="g-2 mb-5">
+
+  <!-- ── Students ── -->
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-people card-head-icon"></i>Students</h5>
+      <span class="badge bdg-gray">{{ members|length }}</span>
+    </div>
+    {% if members %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th>Name</th><th>Registration No.</th><th>Email</th><th>Joined Date</th><th></th></tr></thead>
+      <tbody>
+        {% for m in members %}
+        <tr>
+          <td class="font-semi">{{ m.name }}</td>
+          <td class="text-muted">{{ m.reg_number if m.reg_number else '—' }}</td>
+          <td class="text-muted">{{ m.email }}</td>
+          <td class="text-muted text-sm">{{ m.joined_at[:10] if m.joined_at else '—' }}</td>
+          <td>
+            {% if session.get('role') == 'faculty' %}
+            <a href="/classrooms/{{ room.id }}/remove/{{ m.id }}" class="btn btn-danger btn-sm"
+               onclick="return confirm('Remove {{ m.name }}?')">
+              <i class="bi bi-person-dash"></i>
+            </a>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty">
+      <i class="bi bi-people"></i>
+      <p>No students yet. Share code <strong>{{ room.code }}</strong> with your students.</p>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- ── Exams ── -->
+  <div class="card">
+    <div class="card-head">
+      <h5><i class="bi bi-journal-text card-head-icon"></i>Exams</h5>
+      {% if session.get('role') == 'faculty' %}
+      <a href="/create_exam" class="btn btn-primary btn-sm"><i class="bi bi-plus-lg"></i> Add Exam</a>
+      {% endif %}
+    </div>
+
+    {% if session.get('role') == 'faculty' and unassigned_exams %}
+    <div class="assign-exam-section">
+      <form method="POST" action="/classrooms/{{ room.id }}/assign_exam" class="assign-exam-form">
+        <div class="assign-exam-label">
+          <i class="bi bi-plus-circle"></i> Add existing exam:
+        </div>
+        <select name="exam_id" class="form-control assign-exam-select">
+          <option value="">Select exam to add…</option>
+          {% for e in unassigned_exams %}
+          <option value="{{ e.id }}">{{ e.title }}{% if e.subject %} — {{ e.subject }}{% endif %}</option>
+          {% endfor %}
+        </select>
+        <button type="submit" class="btn btn-primary btn-sm">
+          <i class="bi bi-link-45deg"></i> Add to Classroom
+        </button>
+      </form>
+    </div>
+    {% endif %}
+
+    {% if exams %}
+    <div class="tbl-wrap"><table class="tbl">
+      <thead>
+        <tr><th>Title</th><th>Date</th><th>Questions</th><th>Status</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for e in exams %}
+        {% set editable = (e.launched == 0 and e.published == 0) %}
+        <tr>
+          <td class="font-semi">{{ e.title }}</td>
+          <td class="text-muted">{{ e.exam_date }}</td>
+          <td><span class="badge bdg-primary">{{ e.q_count }}</span></td>
+
+          <!-- Status badge -->
+          <td>
+            {% if e.published %}
+              <span class="badge bdg-primary"><i class="bi bi-check2-all"></i> Published</span>
+            {% elif e.launched %}
+              <span class="badge bdg-success"><i class="bi bi-rocket-takeoff-fill"></i> Available</span>
+            {% else %}
+              <span class="badge bdg-gray"><i class="bi bi-pencil-fill"></i> Draft</span>
+            {% endif %}
+          </td>
+
+          <td>
+            <div class="exam-actions">
+
+              {# View — always #}
+              <a href="/view_questions/{{ e.id }}" class="btn btn-outline btn-sm" title="View questions">
+                <i class="bi bi-eye"></i>
+              </a>
+
+              {% if session.get('role') == 'faculty' %}
+              {# Add questions — draft only #}
+              {% if editable %}
+              <a href="/add_questions/{{ e.id }}" class="btn btn-warning btn-sm" title="Add questions">
+                <i class="bi bi-plus-circle"></i>
+              </a>
+              {% endif %}
+
+              {# Move / Copy to another classroom #}
+              {% if other_classrooms %}
+              <div class="move-wrap">
+                <button class="btn btn-outline btn-sm move-btn" type="button"
+                        data-exam="{{ e.id }}" onclick="toggleMove(this)">
+                  <i class="bi bi-arrow-left-right"></i> Move/Copy
+                </button>
+                <div class="move-dropdown">
+                  <div class="move-dropdown-header">Move to (preserves results)</div>
+                  {% for c in other_classrooms %}
+                  <form method="POST" action="/classrooms/{{ room.id }}/move_exam">
+                    <input type="hidden" name="exam_id" value="{{ e.id }}">
+                    <input type="hidden" name="target_classroom_id" value="{{ c.id }}">
+                    <button type="submit" class="move-dropdown-btn">
+                      <i class="bi bi-arrow-right"></i>{{ c.name }}
+                    </button>
+                  </form>
+                  {% endfor %}
+                  <div class="move-dropdown-divider"></div>
+                  <div class="move-dropdown-header">Copy to (new draft)</div>
+                  {% for c in other_classrooms %}
+                  <form method="POST" action="/classrooms/{{ room.id }}/copy_exam">
+                    <input type="hidden" name="exam_id" value="{{ e.id }}">
+                    <input type="hidden" name="target_classroom_id" value="{{ c.id }}">
+                    <button type="submit" class="move-dropdown-btn move-dropdown-btn-copy">
+                      <i class="bi bi-copy"></i>{{ c.name }}
+                    </button>
+                  </form>
+                  {% endfor %}
+                </div>
+              </div>
+              {% endif %}
+
+              {# Launch — draft only #}
+              {% if editable %}
+              <a href="/launch_exam/{{ e.id }}" class="btn btn-success btn-sm" title="Launch"
+                 onclick="return confirm('Launch this exam?')">
+                <i class="bi bi-rocket-takeoff"></i>
+              </a>
+              {% endif %}
+
+              {# Delete — always #}
+              <a href="/delete_exam/{{ e.id }}" class="btn btn-danger btn-sm" title="Delete"
+                 onclick="return confirm('Delete exam and all its data?')">
+                <i class="bi bi-trash"></i>
+              </a>
+              {% endif %}
+
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}
+    <div class="empty">
+      <i class="bi bi-journal-x"></i>
+      {% if session.get('role') == 'faculty' %}
+      <p>No exams yet. <a href="/create_exam" class="empty-link">Create one →</a></p>
+      {% else %}
+      <p>No exams yet.</p>
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleMove(btn) {
+  // Close all other open dropdowns first
+  document.querySelectorAll('.move-dropdown').forEach(function(d) {
+    if (d !== btn.nextElementSibling) d.style.display = 'none';
+  });
+  var dropdown = btn.nextElementSibling;
+  dropdown.style.display = dropdown.style.display === 'block' ? 'none' : 'block';
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.move-wrap')) {
+    document.querySelectorAll('.move-dropdown').forEach(function(d) {
+      d.style.display = 'none';
+    });
+  }
+});
+</script>
+{% endblock %}

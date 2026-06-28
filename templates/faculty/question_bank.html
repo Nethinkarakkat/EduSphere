@@ -1,0 +1,100 @@
+{% extends "components/base.html" %}
+{% block title %}Question Bank — EduSphere{% endblock %}
+{% block page_title %}Question Bank{% endblock %}
+{% block page_sub %}Reusable questions across your exams{% endblock %}
+{% block topbar_actions %}
+  <button onclick="document.getElementById('addModal').style.display='flex'" class="btn btn-primary btn-sm">
+    <i class="bi bi-plus-lg"></i> Add Question
+  </button>
+{% endblock %}
+
+{% block content %}
+
+<!-- Search + filter -->
+<div class="card mb-5">
+  <div class="card-body">
+    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+      <div style="flex:2;min-width:180px;">
+        <div class="form-label">Search</div>
+        <input type="text" name="q" value="{{ q }}" class="form-control" placeholder="Search questions…">
+      </div>
+      <div style="flex:1;min-width:140px;">
+        <div class="form-label">Category</div>
+        <select name="category" class="form-control">
+          <option value="">All Categories</option>
+          {% for c in categories %}<option value="{{ c.category }}" {% if sel_cat==c.category %}selected{% endif %}>{{ c.category }}</option>{% endfor %}
+        </select>
+      </div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Search</button>
+      {% if q or sel_cat %}<a href="/question_bank" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>{% endif %}
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-collection-fill" style="color:var(--primary);margin-right:6px;"></i>Questions
+      <span class="badge bdg-gray" style="margin-left:8px;">{{ questions|length }}</span>
+    </h5>
+  </div>
+  {% if questions %}
+  <div class="tbl-wrap"><table class="tbl">
+    <thead><tr><th>#</th><th>Question</th><th>Category</th><th>Difficulty</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for q in questions %}
+      <tr>
+        <td class="text-muted">{{ loop.index }}</td>
+        <td style="max-width:380px;">{{ q.question }}</td>
+        <td><span class="badge bdg-info">{{ q.category or '—' }}</span></td>
+        <td><span class="badge {% if q.difficulty=='easy' %}bdg-success{% elif q.difficulty=='hard' %}bdg-danger{% else %}bdg-warning{% endif %}">{{ q.difficulty or 'medium' }}</span></td>
+        <td class="flex gap-2">
+          <a href="/edit_bank_question/{{ q.id }}" class="btn btn-outline btn-sm"><i class="bi bi-pencil"></i></a>
+          <a href="/delete_bank_question/{{ q.id }}" class="btn btn-danger btn-sm"
+             onclick="return confirm('Delete?')"><i class="bi bi-trash"></i></a>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table></div>
+  {% else %}
+  <div class="empty"><i class="bi bi-collection"></i><p>No questions found.</p></div>
+  {% endif %}
+</div>
+
+<!-- Add modal -->
+<div id="addModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:500;align-items:center;justify-content:center;padding:20px;">
+  <div class="card" style="width:100%;max-width:560px;max-height:90vh;overflow-y:auto;">
+    <div class="card-head">
+      <h5>Add to Question Bank</h5>
+      <button onclick="document.getElementById('addModal').style.display='none'" class="btn btn-ghost btn-sm"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <div class="card-body">
+      <form method="POST" action="/add_bank_question">
+        <div class="form-group"><label class="form-label">Question</label><input type="text" name="question" class="form-control" required></div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Option A</label><input type="text" name="o1" class="form-control" required></div>
+          <div class="form-group"><label class="form-label">Option B</label><input type="text" name="o2" class="form-control" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Option C</label><input type="text" name="o3" class="form-control" required></div>
+          <div class="form-group"><label class="form-label">Option D</label><input type="text" name="o4" class="form-control" required></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Correct Answer</label><input type="text" name="answer" class="form-control" required></div>
+          <div class="form-group"><label class="form-label">Category</label><input type="text" name="category" class="form-control" placeholder="e.g. Maths"></div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Difficulty</label>
+          <select name="difficulty" class="form-control">
+            <option value="easy">Easy</option><option value="medium" selected>Medium</option><option value="hard">Hard</option>
+          </select>
+        </div>
+        <div class="flex gap-3">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button>
+          <button type="button" onclick="document.getElementById('addModal').style.display='none'" class="btn btn-ghost">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}

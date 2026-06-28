@@ -1,0 +1,136 @@
+{% extends "components/base.html" %}
+{% block title %}Student Dashboard — EduSphere{% endblock %}
+{% block page_title %}Welcome back, {{ session.get("name", "Student") }} 👋{% endblock %}
+{% block page_sub %}Here's what's happening with your examinations today.{% endblock %}
+
+{% block topbar_actions %}
+  <a href="/student/analytics" class="btn btn-outline btn-sm"><i class="bi bi-bar-chart"></i> Analytics</a>
+  <a href="/student/results" class="btn btn-outline btn-sm"><i class="bi bi-file-earmark-text"></i> Results</a>
+{% endblock %}
+
+{% block content %}
+
+<!-- Stat cards -->
+<div class="stat-grid mb-5">
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-blue"><i class="bi bi-journal-text"></i></div>
+    <div>
+      <div class="stat-val">{{ available_exams|length }}</div>
+      <div class="stat-lbl">Available Exams</div>
+    </div>
+    <a href="/student/exams" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-purple"><i class="bi bi-calendar-check"></i></div>
+    <div>
+      <div class="stat-val">{{ upcoming_exams|length }}</div>
+      <div class="stat-lbl">Upcoming Exams</div>
+    </div>
+    <a href="/student/exams" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-green"><i class="bi bi-check2-all"></i></div>
+    <div>
+      <div class="stat-val">{{ exams_attempted }}</div>
+      <div class="stat-lbl">Exams Attempted</div>
+    </div>
+    <a href="/student/results" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+  <div class="stat" style="transition:transform 0.2s ease,box-shadow 0.2s ease;cursor:default;">
+    <div class="stat-ico ico-yellow"><i class="bi bi-percent"></i></div>
+    <div>
+      <div class="stat-val">{{ avg_score }}%</div>
+      <div class="stat-lbl">Average Score</div>
+    </div>
+    <a href="/student/analytics" style="margin-left:auto;color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+  </div>
+</div>
+
+<!-- My Classrooms -->
+<div class="card mb-5">
+  <div class="card-head">
+    <h5><i class="bi bi-door-open-fill" style="color:var(--primary);margin-right:6px;"></i>My Classrooms</h5>
+    <div style="display:flex;gap:8px;">
+      <a href="/join_classroom" class="btn btn-primary btn-sm" style="text-decoration:none;"><i class="bi bi-box-arrow-in-right"></i> Join Classroom</a>
+      <a href="/student/classrooms" style="color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All →</a>
+    </div>
+  </div>
+  <div class="card-body">
+    {% if classrooms %}
+    <div class="g-3">
+      {% for c in classrooms[:4] %}
+      <div class="card" style="transition:transform 0.2s ease,box-shadow 0.2s ease;">
+        <div class="card-body" style="padding:20px;">
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <div style="width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:var(--primary-light);">
+              <i class="bi bi-door-open-fill" style="font-size:20px;color:var(--primary);"></i>
+            </div>
+            <div style="flex:1;">
+              <div style="font-weight:600;font-size:15px;">{{ c.name }}</div>
+              <div style="font-size:12px;color:var(--muted);">{{ c.subject or 'General' }}</div>
+            </div>
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px;">{{ c.faculty_name }}</div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:4px;">{{ c.student_count }} students • {{ c.exam_count }} exams</div>
+          <a href="/student/classroom/{{ c.id }}" class="btn btn-outline btn-sm" style="text-decoration:none;">View Classroom →</a>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:32px;color:var(--muted);">
+      <div style="font-size:36px;margin-bottom:12px;">👥</div>
+      <div style="font-weight:600;font-size:16px;margin-bottom:8px;">No Classrooms Yet</div>
+      <div style="font-size:14px;">Join a classroom using a classroom code.</div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Recent Results -->
+<div class="card">
+  <div class="card-head">
+    <h5><i class="bi bi-clock-history" style="color:var(--primary);margin-right:6px;"></i>Recent Results</h5>
+    <a href="/student/results" style="color:var(--primary);font-size:13px;text-decoration:none;" onmouseover="this.style.color='var(--primary-dark)'" onmouseout="this.style.color='var(--primary)'">View All Results →</a>
+  </div>
+  {% if recent_results %}
+  <div class="tbl-wrap">
+    <table class="tbl">
+      <thead><tr><th>Exam Title</th><th>Classroom</th><th>Date</th><th>Score</th><th>Percentage</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        {% for r in recent_results[:5] %}
+        <tr>
+          <td class="font-semi">{{ r.exam_title }}</td>
+          <td>{{ r.classroom_name }}</td>
+          <td>{{ r.date[:10] if r.date else '—' }}</td>
+          <td>{{ r.score }}</td>
+          <td>{{ r.percentage }}%</td>
+          <td>
+            {% if r.result_published == 1 %}
+              <span class="badge bdg-success">Published</span>
+            {% else %}
+              <span class="badge bdg-warning">Awaiting Publication</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if r.result_published == 1 %}
+              <a href="/view_result/{{ r.exam_id }}" class="btn btn-outline btn-sm" style="text-decoration:none;">View Result</a>
+            {% else %}
+              <span class="text-muted text-sm">Faculty will publish results</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div style="text-align:center;padding:32px;color:var(--muted);">
+    <div style="font-size:36px;margin-bottom:12px;">📊</div>
+    <div style="font-weight:600;font-size:16px;margin-bottom:8px;">No Results Yet</div>
+    <div style="font-size:14px;">Results will appear here once published.</div>
+  </div>
+  {% endif %}
+</div>
+
+{% endblock %}
