@@ -147,10 +147,22 @@ def gen_code(n=6):
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=n))
 
 # ── Migrations ───────────────────────────────────────────────────────────────
+def table_exists(conn, table_name):
+    """Check if a table exists in the database."""
+    c = conn.cursor()
+    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+    return c.fetchone() is not None
+
 def migrate_db():
     db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     c = conn.cursor()
+    
+    # Only run migrations if tables exist (fresh databases are handled by init_db)
+    if not table_exists(conn, 'submissions'):
+        conn.close()
+        return
+    
     # Check if tab_switches column exists in submissions table
     c.execute("PRAGMA table_info(submissions)")
     columns = [column[1] for column in c.fetchall()]
@@ -820,9 +832,10 @@ def validate_schema(conn):
     except Exception as e:
         app.logger.exception(f"Schema validation failed: {e}")
 
-# Run migrations before init_db to ensure schema is up to date
-migrate_db()
+# Initialize database first (creates schema for fresh deployments)
 init_db()
+# Then run migrations for existing databases
+migrate_db()
 
 # Validate schema at startup
 conn = get_db()
