@@ -95,8 +95,14 @@ def enforce_session_timeout():
             return redirect("/")
 
 # ── DB ─────────────────────────────────────────────────────────────────────
+def get_db_path():
+    """Get the database path and ensure the instance directory exists."""
+    instance_path = os.path.join(os.path.dirname(__file__), 'instance')
+    os.makedirs(instance_path, exist_ok=True)
+    return os.path.join(instance_path, 'database.db')
+
 def get_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'database.db')
+    db_path = get_db_path()
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -142,8 +148,9 @@ def gen_code(n=6):
 
 # ── Migrations ───────────────────────────────────────────────────────────────
 def migrate_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'database.db')
-    conn = sqlite3.connect(db_path); c = conn.cursor()
+    db_path = get_db_path()
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
     # Check if tab_switches column exists in submissions table
     c.execute("PRAGMA table_info(submissions)")
     columns = [column[1] for column in c.fetchall()]
@@ -327,7 +334,7 @@ def migrate_db():
 
 # ── Init DB ────────────────────────────────────────────────────────────────
 def init_db():
-    db_path = os.path.join(os.path.dirname(__file__), 'instance', 'database.db')
+    db_path = get_db_path()
     
     # Check if database file exists
     db_exists = os.path.exists(db_path)
@@ -495,7 +502,8 @@ def init_db():
         return
     
     # If database exists, run migration logic
-    conn = sqlite3.connect(db_path); c = conn.cursor()
+    conn = sqlite3.connect(db_path)
+    c = conn.cursor()
     # Check if email column has UNIQUE constraint, add it if missing
     c.execute("PRAGMA table_info(users)")
     columns = c.fetchall()
