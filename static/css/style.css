@@ -963,38 +963,12 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .auth-wrap { flex-direction: column; }
   .auth-panel {
     width: 100%;
-    padding: 16px;
+    padding: 12px;
     min-height: auto;
-    max-height: 35vh;
+    max-height: 25vh;
     overflow-y: auto;
   }
   .auth-panel::before, .auth-panel::after { display: none; }
-  .auth-logo-section { margin-bottom: 12px; }
-  .auth-logo-img { width: 48px; height: 48px; }
-  .auth-logo-text { font-size: 22px; }
-  .auth-logo-subtext { font-size: 13px; }
-  .auth-welcome-section { margin-bottom: 12px; }
-  .auth-welcome-section h1 { font-size: 22px; }
-  .auth-welcome-section p { font-size: 13px; }
-  .auth-illustration-section { margin-bottom: 12px; }
-  .auth-illustration { max-width: 140px; }
-  .auth-features { gap: 12px; }
-  .auth-feat-card { min-width: 100px; padding: 10px; min-height: 80px; }
-  .auth-feat-card .auth-feat-ico { width: 32px; height: 32px; font-size: 14px; }
-  .auth-feat-title { font-size: 12px; }
-  .auth-feat-desc { font-size: 10px; }
-  .auth-footer { padding-top: 8px; font-size: 10px; }
-  .auth-form-side { padding: 20px 16px; }
-  .auth-card { padding: 20px; }
-  .auth-card .form-group { margin-bottom: 10px; }
-  .stats-grid { grid-template-columns: repeat(2,1fr); }
-}
-@media(max-width:640px){
-  .sidebar { transform: translateX(-100%); }
-  .auth-panel {
-    max-height: 30vh;
-    padding: 12px;
-  }
   .auth-logo-section { margin-bottom: 8px; }
   .auth-logo-img { width: 40px; height: 40px; }
   .auth-logo-text { font-size: 18px; }
@@ -1002,19 +976,46 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .auth-welcome-section { margin-bottom: 8px; }
   .auth-welcome-section h1 { font-size: 18px; margin-bottom: 4px; }
   .auth-welcome-section p { font-size: 12px; margin-bottom: 4px; }
-  .auth-welcome-subtitle { font-size: 11px; }
+  .auth-welcome-subtitle { font-size: 10px; }
   .auth-illustration-section { margin-bottom: 8px; }
   .auth-illustration { max-width: 100px; }
   .auth-features { gap: 8px; }
-  .auth-feat-card { min-width: 80px; padding: 8px; min-height: 70px; }
+  .auth-feat-card { min-width: 80px; padding: 8px; min-height: 60px; }
   .auth-feat-card .auth-feat-ico { width: 28px; height: 28px; font-size: 12px; }
-  .auth-feat-title { font-size: 11px; }
+  .auth-feat-title { font-size: 10px; }
   .auth-feat-desc { font-size: 9px; }
   .auth-footer { padding-top: 6px; font-size: 9px; }
   .auth-form-side { padding: 16px 12px; }
   .auth-card { padding: 16px; }
-  .auth-card h2 { font-size: 20px; }
-  .auth-card .sub { font-size: 13px; margin-bottom: 16px; }
+  .auth-card .form-group { margin-bottom: 10px; }
+  .stats-grid { grid-template-columns: repeat(2,1fr); }
+}
+@media(max-width:640px){
+  .sidebar { transform: translateX(-100%); }
+  .auth-panel {
+    max-height: 20vh;
+    padding: 10px;
+  }
+  .auth-logo-section { margin-bottom: 6px; }
+  .auth-logo-img { width: 36px; height: 36px; }
+  .auth-logo-text { font-size: 16px; }
+  .auth-logo-subtext { font-size: 10px; }
+  .auth-welcome-section { margin-bottom: 6px; }
+  .auth-welcome-section h1 { font-size: 16px; margin-bottom: 2px; }
+  .auth-welcome-section p { font-size: 11px; margin-bottom: 2px; }
+  .auth-welcome-subtitle { font-size: 9px; }
+  .auth-illustration-section { margin-bottom: 6px; }
+  .auth-illustration { max-width: 80px; }
+  .auth-features { gap: 6px; }
+  .auth-feat-card { min-width: 70px; padding: 6px; min-height: 50px; }
+  .auth-feat-card .auth-feat-ico { width: 24px; height: 24px; font-size: 10px; }
+  .auth-feat-title { font-size: 9px; }
+  .auth-feat-desc { font-size: 8px; }
+  .auth-footer { padding-top: 4px; font-size: 8px; }
+  .auth-form-side { padding: 8px 10px; }
+  .auth-card { padding: 14px; margin: 0; }
+  .auth-card h2 { font-size: 18px; }
+  .auth-card .sub { font-size: 12px; margin-bottom: 12px; }
   .auth-card .form-group { margin-bottom: 8px; }
   .main { margin-left: 0; }
   .stats-grid { grid-template-columns: 1fr; }
@@ -1577,10 +1578,10 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .stats-card .stats-label { font-size: 13px; }
   
   /* Page headers: Allow wrapping */
-  .topbar-left { flex-wrap: wrap; gap: 8px; }
-  .topbar-left h1 { font-size: 20px; }
-  .topbar-right { flex-wrap: wrap; gap: 8px; }
-  .topbar { padding: 12px 16px; }
+  .topbar-left { flex-wrap: wrap; gap: 6px; }
+  .topbar-left h1 { font-size: 18px; margin: 0; }
+  .topbar-right { flex-wrap: wrap; gap: 6px; }
+  .topbar { padding: 10px 12px; }
   
   /* Tables: Horizontal scroll allowed */
   .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -1589,9 +1590,9 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .table-actions { min-width: 80px; }
   
   /* Forms: Reduce spacing */
-  .form-group { margin-bottom: 16px; }
-  .form-row { grid-template-columns: 1fr; gap: 12px; }
-  .form-row-3 { grid-template-columns: 1fr; gap: 12px; }
+  .form-group { margin-bottom: 12px; }
+  .form-row { grid-template-columns: 1fr; gap: 10px; }
+  .form-row-3 { grid-template-columns: 1fr; gap: 10px; }
   .form-control { min-height: 44px; font-size: 14px; }
   .btn { min-height: 44px; font-size: 14px; }
   .btn-sm { min-height: 36px; font-size: 13px; }
@@ -1624,20 +1625,27 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .filter-actions .btn { width: 100%; }
 
   /* Remove excessive whitespace */
-  .container { padding: 0 16px; }
-  .main-content { padding: 16px; }
-  .card { margin-bottom: 16px; }
-  .section { margin-bottom: 20px; }
-  .section-header { margin-bottom: 12px; }
+  .container { padding: 0 12px; }
+  .main-content { padding: 12px; }
+  .card { margin-bottom: 12px; padding: 14px; }
+  .section { margin-bottom: 16px; }
+  .section-header { margin-bottom: 10px; }
+
+  /* Dashboard widgets: Reduce empty space */
+  .widget { padding: 14px; margin-bottom: 12px; }
+  .widget-header { margin-bottom: 10px; }
+  .widget-content { padding: 0; }
+  .activity-item { padding: 10px 0; }
+  .overview-card { padding: 14px; }
 
   /* Typography scaling already handled above with h1, h2, h3 */
 
   /* Mobile: 1 card per row */
-  .stats-grid { grid-template-columns: 1fr; }
-  .stats-card { padding: 16px; }
-  .stats-card .stats-icon { width: 44px; height: 44px; font-size: 20px; }
-  .stats-card .stats-value { font-size: 24px; }
-  .stats-card .stats-label { font-size: 12px; }
+  .stats-grid { grid-template-columns: 1fr; gap: 10px; }
+  .stats-card { padding: 14px; }
+  .stats-card .stats-icon { width: 40px; height: 40px; font-size: 18px; }
+  .stats-card .stats-value { font-size: 22px; }
+  .stats-card .stats-label { font-size: 11px; }
   
   /* Auth logo scaling */
   .auth-logo-img { width: 64px; height: 64px; }
