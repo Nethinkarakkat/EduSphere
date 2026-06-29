@@ -13,7 +13,10 @@
 </head>
 <body>
 <div class="layout">
-  <aside class="sidebar">
+  <!-- Mobile sidebar overlay -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+  
+  <aside class="sidebar" id="sidebar">
     <div class="sb-brand">
       <div class="sb-brand-row">
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="EduSphere Logo" class="sb-logo-img">
@@ -95,6 +98,9 @@
   <div class="main">
     <header class="topbar">
       <div class="topbar-left">
+        <button class="mobile-menu-btn" id="mobileMenuBtn" onclick="toggleSidebar()">
+          <i class="bi bi-list"></i>
+        </button>
         <h1>{% block page_title %}Dashboard{% endblock %}</h1>
         <p>{% block page_sub %}{% endblock %}</p>
       </div>
@@ -128,6 +134,27 @@ function showConfirm(title, message, confirmUrl) {
     window.location.href = confirmUrl;
   }
 }
+
+// Mobile sidebar toggle
+function toggleSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  sidebar.classList.toggle('open');
+  overlay.classList.toggle('active');
+}
+
+// Close sidebar when clicking a link on mobile
+document.addEventListener('DOMContentLoaded', function() {
+  const sidebarLinks = document.querySelectorAll('.sb-link');
+  sidebarLinks.forEach(link => {
+    link.addEventListener('click', function() {
+      if (window.innerWidth <= 767) {
+        toggleSidebar();
+      }
+    });
+  });
+});
+
 // ThemeManager handles icon sync via themeChanged event — no duplicate logic here.
 </script>
 

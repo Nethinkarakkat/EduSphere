@@ -5,19 +5,19 @@
 
 {% block content %}
 <style>
-.profile-grid {
+.profile-layout {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 24px;
   margin-bottom: 24px;
 }
-@media (max-width: 992px) {
-  .profile-grid {
+@media (max-width: 991px) {
+  .profile-layout {
     grid-template-columns: 1fr;
   }
 }
-@media (max-width: 576px) {
-  .profile-grid {
+@media (max-width: 767px) {
+  .profile-layout {
     gap: 16px;
   }
 }
@@ -111,7 +111,7 @@
 </style>
 
 <!-- Top Row -->
-<div class="profile-grid">
+<div class="profile-layout">
   <!-- Personal Information -->
   <div class="card">
     <div class="card-head"><h5>Personal Information</h5></div>
@@ -210,7 +210,7 @@
 </div>
 
 <!-- Bottom Row -->
-<div class="profile-grid">
+<div class="profile-layout">
   <!-- Account Activity -->
   <div class="card">
     <div class="card-head"><h5>Account Activity</h5></div>

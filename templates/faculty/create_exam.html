@@ -8,13 +8,13 @@
 
 {% block content %}
 <style>
-.create-exam-grid {
+.exam-layout {
   display: grid;
   grid-template-columns: 2fr 1fr;
   gap: 24px;
 }
-@media (max-width: 992px) {
-  .create-exam-grid {
+@media (max-width: 991px) {
+  .exam-layout {
     grid-template-columns: 1fr;
   }
 }
@@ -89,7 +89,7 @@
 </div>
 
 <!-- Main Content -->
-<div class="create-exam-grid">
+<div class="exam-layout">
   <!-- Left Side: Form -->
   <div class="card">
     <div class="card-head">
