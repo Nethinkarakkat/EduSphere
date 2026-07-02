@@ -2885,12 +2885,12 @@ def join_classroom():
                 return redirect("/join_classroom")
             
             # Check if classroom is archived
-            if room.get("is_archived") == 1:
+            if "is_archived" in room.keys() and room["is_archived"] == 1:
                 flash("⚠ This classroom is no longer accepting new students.", "danger")
                 return redirect("/join_classroom")
             
             # Check if classroom is inactive (if there's an is_active column)
-            if "is_active" in room.keys() and room.get("is_active") == 0:
+            if "is_active" in room.keys() and room["is_active"] == 0:
                 flash("⚠ This classroom is no longer accepting new students.", "danger")
                 return redirect("/join_classroom")
             
