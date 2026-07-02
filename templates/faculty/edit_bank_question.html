@@ -14,43 +14,47 @@
           <label class="form-label">Question</label>
           <input type="text" name="question" class="form-control" value="{{ question.question }}" required>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Option A</label>
+        <div class="form-group">
+          <label class="form-label">Option A</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o1" {% if question.correct_answer == question.option1 %}checked{% endif %} required style="width:20px;height:20px;">
             <input type="text" name="o1" class="form-control" value="{{ question.option1 }}" required>
           </div>
-          <div class="form-group">
-            <label class="form-label">Option B</label>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Option B</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o2" {% if question.correct_answer == question.option2 %}checked{% endif %} required style="width:20px;height:20px;">
             <input type="text" name="o2" class="form-control" value="{{ question.option2 }}" required>
           </div>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Option C</label>
+        <div class="form-group">
+          <label class="form-label">Option C</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o3" {% if question.correct_answer == question.option3 %}checked{% endif %} required style="width:20px;height:20px;">
             <input type="text" name="o3" class="form-control" value="{{ question.option3 }}" required>
           </div>
-          <div class="form-group">
-            <label class="form-label">Option D</label>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Option D</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o4" {% if question.correct_answer == question.option4 %}checked{% endif %} required style="width:20px;height:20px;">
             <input type="text" name="o4" class="form-control" value="{{ question.option4 }}" required>
           </div>
         </div>
         <div class="form-row">
           <div class="form-group">
-            <label class="form-label">Correct Answer</label>
-            <input type="text" name="answer" class="form-control" value="{{ question.correct_answer }}" required>
-          </div>
-          <div class="form-group">
             <label class="form-label">Category</label>
             <input type="text" name="category" class="form-control" value="{{ question.category }}">
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Difficulty</label>
-          <select name="difficulty" class="form-control">
-            <option value="easy" {% if question.difficulty=='easy' %}selected{% endif %}>Easy</option>
-            <option value="medium" {% if question.difficulty=='medium' or not question.difficulty %}selected{% endif %}>Medium</option>
-            <option value="hard" {% if question.difficulty=='hard' %}selected{% endif %}>Hard</option>
-          </select>
+          <div class="form-group">
+            <label class="form-label">Difficulty</label>
+            <select name="difficulty" class="form-control">
+              <option value="easy" {% if question.difficulty=='easy' %}selected{% endif %}>Easy</option>
+              <option value="medium" {% if question.difficulty=='medium' or not question.difficulty %}selected{% endif %}>Medium</option>
+              <option value="hard" {% if question.difficulty=='hard' %}selected{% endif %}>Hard</option>
+            </select>
+          </div>
         </div>
         <div class="flex gap-3">
           <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg"></i> Save</button>

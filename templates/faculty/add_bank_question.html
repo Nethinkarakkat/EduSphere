@@ -14,43 +14,47 @@
           <label class="form-label">Question</label>
           <input type="text" name="question" class="form-control" placeholder="Question text" required>
         </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Option A</label>
-            <input type="text" name="o1" class="form-control" required>
+        <div class="form-group">
+          <label class="form-label">Option A</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o1" required style="width:20px;height:20px;">
+            <input type="text" name="o1" class="form-control" placeholder="Enter option A" required>
           </div>
-          <div class="form-group">
-            <label class="form-label">Option B</label>
-            <input type="text" name="o2" class="form-control" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Option B</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o2" required style="width:20px;height:20px;">
+            <input type="text" name="o2" class="form-control" placeholder="Enter option B" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Option C</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o3" required style="width:20px;height:20px;">
+            <input type="text" name="o3" class="form-control" placeholder="Enter option C" required>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Option D</label>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input type="radio" name="correct_option" value="o4" required style="width:20px;height:20px;">
+            <input type="text" name="o4" class="form-control" placeholder="Enter option D" required>
           </div>
         </div>
         <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Option C</label>
-            <input type="text" name="o3" class="form-control" required>
-          </div>
-          <div class="form-group">
-            <label class="form-label">Option D</label>
-            <input type="text" name="o4" class="form-control" required>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label class="form-label">Correct Answer</label>
-            <input type="text" name="answer" class="form-control" required>
-          </div>
           <div class="form-group">
             <label class="form-label">Category</label>
             <input type="text" name="category" class="form-control" placeholder="e.g. Science">
           </div>
-        </div>
-        <div class="form-group">
-          <label class="form-label">Difficulty</label>
-          <select name="difficulty" class="form-control">
-            <option value="easy">Easy</option>
-            <option value="medium" selected>Medium</option>
-            <option value="hard">Hard</option>
-          </select>
+          <div class="form-group">
+            <label class="form-label">Difficulty</label>
+            <select name="difficulty" class="form-control">
+              <option value="easy">Easy</option>
+              <option value="medium" selected>Medium</option>
+              <option value="hard">Hard</option>
+            </select>
+          </div>
         </div>
         <div class="flex gap-3">
           <button type="submit" class="btn btn-primary"><i class="bi bi-plus-lg"></i> Add</button>

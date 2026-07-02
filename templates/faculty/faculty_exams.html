@@ -106,6 +106,24 @@
                 <i class="bi bi-eye"></i> View
               </a>
 
+              {% if s == 'draft' %}
+              <a href="/edit_exam/{{ e.id }}"
+                 class="btn btn-info btn-sm" title="Edit exam details">
+                <i class="bi bi-pencil"></i> Edit
+              </a>
+
+              <a href="/add_questions/{{ e.id }}"
+                 class="btn btn-warning btn-sm" title="Add questions & import from bank">
+                <i class="bi bi-pencil-square"></i> Edit Questions
+              </a>
+
+              <a href="/launch_exam/{{ e.id }}"
+                 class="btn btn-success btn-sm" title="Launch exam"
+                 onclick="return confirm('Launch this exam? Students will be able to attempt it.')">
+                <i class="bi bi-rocket-takeoff"></i> Launch
+              </a>
+              {% endif %}
+
               <a href="/copy_exam/{{ e.id }}"
                  class="btn btn-outline btn-sm" title="Copy exam">
                 <i class="bi bi-copy"></i> Copy

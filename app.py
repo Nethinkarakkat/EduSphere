@@ -2870,38 +2870,51 @@ def admin_change_password():
 def join_classroom():
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     if request.method == "POST":
-        code = request.form["code"].strip().upper()
-        conn = get_db()
-        # Check for valid classroom code (including archived ones for proper error message)
-        room = conn.execute("SELECT * FROM classrooms WHERE code=?", (code,)).fetchone()
-        if not room:
-            flash("Invalid classroom code. Please check the code and try again.", "danger")
+        code = request.form.get("code", "").strip().upper()
+        
+        if not code:
+            flash("Please enter a classroom code.", "danger")
             return redirect("/join_classroom")
         
-        # Check if classroom is archived
-        if room.get("is_archived") == 1:
-            flash("This classroom is no longer accepting new students.", "danger")
-            return redirect("/join_classroom")
-        
-        # Check if classroom is inactive (if there's an is_active column)
-        if "is_active" in room.keys() and room.get("is_active") == 0:
-            flash("This classroom is no longer accepting new students.", "danger")
-            return redirect("/join_classroom")
-        
-        # Check already joined
-        existing = conn.execute("SELECT id FROM classroom_members WHERE classroom_id=? AND student_id=?",
-                                (room["id"], session["user_id"])).fetchone()
-        if existing:
-            flash("You are already a member of this classroom.", "warning")
+        try:
+            conn = get_db()
+            # Check for valid classroom code (including archived ones for proper error message)
+            room = conn.execute("SELECT * FROM classrooms WHERE code=?", (code,)).fetchone()
+            if not room:
+                flash("❌ Invalid classroom code. Please check the code and try again.", "danger")
+                return redirect("/join_classroom")
+            
+            # Check if classroom is archived
+            if room.get("is_archived") == 1:
+                flash("⚠ This classroom is no longer accepting new students.", "danger")
+                return redirect("/join_classroom")
+            
+            # Check if classroom is inactive (if there's an is_active column)
+            if "is_active" in room.keys() and room.get("is_active") == 0:
+                flash("⚠ This classroom is no longer accepting new students.", "danger")
+                return redirect("/join_classroom")
+            
+            # Check already joined
+            existing = conn.execute("SELECT id FROM classroom_members WHERE classroom_id=? AND student_id=?",
+                                    (room["id"], session["user_id"])).fetchone()
+            if existing:
+                flash("ℹ You have already joined this classroom.", "warning")
+                return redirect("/student/classrooms")
+            
+            # All validations passed, join the classroom
+            conn.execute("INSERT INTO classroom_members(classroom_id,student_id) VALUES(?,?)",
+                         (room["id"], session["user_id"]))
+            conn.commit()
+            log_activity(session["user_id"], f"Joined classroom: {room['name']}")
+            flash(f"✓ Joined classroom: {room['name']}!", "success")
             return redirect("/student/classrooms")
-        
-        # All validations passed, join the classroom
-        conn.execute("INSERT INTO classroom_members(classroom_id,student_id) VALUES(?,?)",
-                     (room["id"], session["user_id"]))
-        conn.commit()
-        log_activity(session["user_id"], f"Joined classroom: {room['name']}")
-        flash(f"Joined classroom: {room['name']}!", "success")
-        return redirect("/student/classrooms")
+        except Exception as e:
+            # Log the full error internally
+            import logging
+            logging.error(f"Error joining classroom: {str(e)}")
+            # Show a friendly flash message
+            flash("Something went wrong. Please try again.", "danger")
+            return redirect("/join_classroom")
     return render_template("student/join_classroom.html")
 
 # Student: My Classrooms
@@ -4356,8 +4369,9 @@ def edit_exam(exam_id):
     if not exam:
         flash("Exam not found.", "danger")
         return redirect("/faculty")
-    if exam["launched"] == 1 or exam["published"] == 1:
-        flash("Cannot edit a launched or completed exam.", "warning")
+    # Only check launched field - published is for result publication, not launch state
+    if exam["launched"] == 1:
+        flash("Cannot edit a launched exam.", "warning")
         return redirect("/faculty")
     
     if request.method == "POST":
@@ -4397,8 +4411,9 @@ def add_questions(exam_id):
                         (exam_id, session["user_id"])).fetchone()
     if not exam:
         return redirect("/faculty")
-    if exam["launched"] == 1 or exam["published"] == 1:
-        flash("Cannot add questions to a launched or completed exam.", "warning")
+    # Only check launched field - published is for result publication, not launch state
+    if exam["launched"] == 1:
+        flash("Cannot add questions to a launched exam.", "warning")
         return redirect(f"/view_questions/{exam_id}")
     if request.method == "POST":
         q    = request.form.get("question","").strip()
@@ -4542,8 +4557,9 @@ def edit_questions(exam_id):
                         (exam_id, session["user_id"])).fetchone()
     if not exam:
         return redirect("/faculty")
-    if exam["launched"] == 1 or exam["published"] == 1:
-        flash("Cannot edit questions of a launched or completed exam.", "warning")
+    # Only check launched field - published is for result publication, not launch state
+    if exam["launched"] == 1:
+        flash("Cannot edit questions of a launched exam.", "warning")
         return redirect(f"/view_questions/{exam_id}")
     questions = conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
     return render_template("faculty/edit_questions.html", questions=questions, exam_id=exam_id)
@@ -4557,8 +4573,9 @@ def delete_question(id, exam_id):
                         (exam_id, session["user_id"])).fetchone()
     if not exam:
         flash("Exam not found.", "danger"); return redirect("/faculty")
-    if exam["launched"] == 1 or exam["published"] == 1:
-        flash("Cannot delete questions from a launched or completed exam.", "warning")
+    # Only check launched field - published is for result publication, not launch state
+    if exam["launched"] == 1:
+        flash("Cannot delete questions from a launched exam.", "warning")
         return redirect(f"/view_questions/{exam_id}")
     conn.execute("DELETE FROM questions WHERE id=?", (id,))
     conn.commit()
@@ -4587,9 +4604,23 @@ def add_bank_question():
     if g: return g
     if request.method == "POST":
         conn = get_db()
+        # Get the selected correct option and use its value as the correct answer
+        correct_option = request.form.get("correct_option")
+        if correct_option == "o1":
+            correct_answer = request.form["o1"]
+        elif correct_option == "o2":
+            correct_answer = request.form["o2"]
+        elif correct_option == "o3":
+            correct_answer = request.form["o3"]
+        elif correct_option == "o4":
+            correct_answer = request.form["o4"]
+        else:
+            flash("Please select the correct answer.", "danger")
+            return render_template("faculty/add_bank_question.html")
+        
         conn.execute("INSERT INTO question_bank(question,option1,option2,option3,option4,correct_answer,category,difficulty,faculty_id) VALUES(?,?,?,?,?,?,?,?,?)",
                      (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
-                      request.form["o4"],request.form["answer"],request.form.get("category",""),
+                      request.form["o4"],correct_answer,request.form.get("category",""),
                       request.form.get("difficulty","medium"),session["user_id"]))
         conn.commit(); flash("Question added.", "success"); return redirect("/question_bank")
     return render_template("faculty/add_bank_question.html")
@@ -4600,9 +4631,25 @@ def edit_bank_question(id):
     if g: return g
     conn = get_db()
     if request.method == "POST":
+        # Get the selected correct option and use its value as the correct answer
+        correct_option = request.form.get("correct_option")
+        if correct_option == "o1":
+            correct_answer = request.form["o1"]
+        elif correct_option == "o2":
+            correct_answer = request.form["o2"]
+        elif correct_option == "o3":
+            correct_answer = request.form["o3"]
+        elif correct_option == "o4":
+            correct_answer = request.form["o4"]
+        else:
+            flash("Please select the correct answer.", "danger")
+            question = conn.execute("SELECT * FROM question_bank WHERE id=? AND faculty_id=?",
+                                    (id, session["user_id"])).fetchone()
+            return render_template("faculty/edit_bank_question.html", question=question)
+        
         conn.execute("UPDATE question_bank SET question=?,option1=?,option2=?,option3=?,option4=?,correct_answer=?,category=?,difficulty=? WHERE id=?",
                      (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
-                      request.form["o4"],request.form["answer"],request.form.get("category",""),
+                      request.form["o4"],correct_answer,request.form.get("category",""),
                       request.form.get("difficulty","medium"),id))
         conn.commit(); flash("Question updated.", "success"); return redirect("/question_bank")
     question = conn.execute("SELECT * FROM question_bank WHERE id=? AND faculty_id=?",
