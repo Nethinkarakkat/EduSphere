@@ -7,7 +7,11 @@ from fpdf import FPDF
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-load_dotenv()
+# Load .env file from the same directory as this script
+env_path = os.path.join(os.path.dirname(__file__), '.env')
+print(f"[STARTUP] Loading .env from: {env_path}")
+print(f"[STARTUP] .env file exists: {os.path.exists(env_path)}")
+load_dotenv(env_path)
 
 # ── Startup Logging ──────────────────────────────────────────────────────────
 import logging
@@ -16,6 +20,7 @@ logger = logging.getLogger(__name__)
 
 print("[STARTUP] Loading environment variables...")
 DATABASE_URL = os.environ.get("DATABASE_URL")
+print(f"[STARTUP] DATABASE_URL value: {DATABASE_URL}")
 if DATABASE_URL:
     print(f"[STARTUP] DATABASE_URL detected (PostgreSQL mode enabled)")
     print(f"[STARTUP] DATABASE_URL prefix: {DATABASE_URL[:20]}..." if len(DATABASE_URL) > 20 else f"[STARTUP] DATABASE_URL: {DATABASE_URL}")
@@ -253,9 +258,10 @@ def gen_code(n=6):
 def table_exists(conn, table_name):
     """Check if a table exists in the database."""
     if DATABASE_URL:
-        # PostgreSQL
-        cursor = conn.execute("""
-            SELECT table_name FROM information_schema.tables 
+        # PostgreSQL - need to create cursor first
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT table_name FROM information_schema.tables
             WHERE table_schema = 'public' AND table_name = %s
         """, (table_name,))
         return cursor.fetchone() is not None
@@ -268,9 +274,10 @@ def table_exists(conn, table_name):
 def column_exists(conn, table_name, column_name):
     """Check if a column exists in a table."""
     if DATABASE_URL:
-        # PostgreSQL
-        cursor = conn.execute("""
-            SELECT column_name FROM information_schema.columns 
+        # PostgreSQL - need to create cursor first
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT column_name FROM information_schema.columns
             WHERE table_schema = 'public' AND table_name = %s AND column_name = %s
         """, (table_name, column_name))
         return cursor.fetchone() is not None
@@ -288,6 +295,7 @@ def migrate_db():
         print("[STARTUP] PostgreSQL migration mode")
         # PostgreSQL migration
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        cursor = conn.cursor()
     else:
         # SQLite migration
         db_path = get_db_path()
@@ -295,19 +303,20 @@ def migrate_db():
         conn.row_factory = sqlite3.Row
         # Enable WAL mode for better concurrency
         conn.execute('PRAGMA journal_mode=WAL')
-    
+        cursor = conn.cursor()
+
     # Only run migrations if tables exist (fresh databases are handled by init_db)
     if not table_exists(conn, 'submissions'):
         conn.close()
         return
-    
+
     # Helper function to add column if it doesn't exist
     def add_column_if_missing(table, column, definition):
         if not column_exists(conn, table, column):
             if DATABASE_URL:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             else:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+                cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
             conn.commit()
     
     # Check if tab_switches column exists in submissions table
@@ -338,7 +347,7 @@ def migrate_db():
     if not column_exists(conn, 'submissions', 'result_published'):
         add_column_if_missing('submissions', 'result_published', 'INTEGER DEFAULT 0')
         # Migrate existing data: mark submissions from already-published exams as published
-        conn.execute("""
+        cursor.execute("""
             UPDATE submissions
             SET result_published = 1,
                 published_at = CURRENT_TIMESTAMP
@@ -375,24 +384,26 @@ def migrate_db():
     
     # Backfill submitted_at for old submissions where it was never set
     if DATABASE_URL:
-        null_rows = conn.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC").fetchall()
+        cursor.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC")
+        null_rows = cursor.fetchall()
     else:
-        null_rows = conn.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC").fetchall()
+        cursor.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC")
+        null_rows = cursor.fetchall()
     
     if null_rows:
         base_time = datetime(2026, 1, 1)
         for i, row in enumerate(null_rows):
             fallback_ts = (base_time + timedelta(minutes=i)).strftime('%Y-%m-%d %H:%M:%S')
-            conn.execute("UPDATE submissions SET submitted_at=%s WHERE id=%s", (fallback_ts, row['id']))
+            cursor.execute("UPDATE submissions SET submitted_at=%s WHERE id=%s", (fallback_ts, row['id']))
         conn.commit()
     
     # Profile completion workflow
     if not column_exists(conn, 'users', 'profile_completed'):
         add_column_if_missing('users', 'profile_completed', 'INTEGER DEFAULT 0')
-        conn.execute("UPDATE users SET profile_completed=1 WHERE role='admin'")
-        conn.execute("UPDATE users SET profile_completed=1 WHERE role IN ('student','faculty') AND approved=1")
+        cursor.execute("UPDATE users SET profile_completed=1 WHERE role='admin'")
+        cursor.execute("UPDATE users SET profile_completed=1 WHERE role IN ('student','faculty') AND approved=1")
         conn.commit()
-    
+
     # Archive system columns
     add_column_if_missing('classrooms', 'is_archived', 'INTEGER DEFAULT 0')
     add_column_if_missing('classrooms', 'archived_at', 'TIMESTAMP DEFAULT NULL')
@@ -400,7 +411,7 @@ def migrate_db():
     add_column_if_missing('exams', 'is_archived', 'INTEGER DEFAULT 0')
     add_column_if_missing('exams', 'archived_at', 'TIMESTAMP DEFAULT NULL')
     add_column_if_missing('exams', 'archived_by', 'INTEGER DEFAULT NULL')
-    
+
     conn.close()
 
 # ── Init DB ────────────────────────────────────────────────────────────────
@@ -426,6 +437,7 @@ def init_postgres_db():
         print("[STARTUP] Connecting to PostgreSQL for initialization...")
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
         print("[STARTUP] PostgreSQL connection established for initialization")
+        cursor = conn.cursor()
 
         # Check if users table exists
         print("[STARTUP] Checking if users table exists...")
@@ -434,7 +446,7 @@ def init_postgres_db():
 
             # Create users table with all columns
             print("[STARTUP] Creating users table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE users(
                     id SERIAL PRIMARY KEY,
                     name TEXT,
@@ -466,7 +478,7 @@ def init_postgres_db():
 
             # Create exams table
             print("[STARTUP] Creating exams table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE exams(
                     id SERIAL PRIMARY KEY,
                     title TEXT,
@@ -492,7 +504,7 @@ def init_postgres_db():
 
             # Create questions table
             print("[STARTUP] Creating questions table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE questions(
                     id SERIAL PRIMARY KEY,
                     exam_id INTEGER,
@@ -510,7 +522,7 @@ def init_postgres_db():
 
             # Create question_bank table
             print("[STARTUP] Creating question_bank table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE question_bank(
                     id SERIAL PRIMARY KEY,
                     question TEXT,
@@ -529,7 +541,7 @@ def init_postgres_db():
 
             # Create submissions table
             print("[STARTUP] Creating submissions table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE submissions(
                     id SERIAL PRIMARY KEY,
                     student_id INTEGER,
@@ -546,7 +558,7 @@ def init_postgres_db():
 
             # Create activity_log table
             print("[STARTUP] Creating activity_log table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE activity_log(
                     id SERIAL PRIMARY KEY,
                     user_id INTEGER,
@@ -558,7 +570,7 @@ def init_postgres_db():
 
             # Create submission_answers table
             print("[STARTUP] Creating submission_answers table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE submission_answers(
                     id SERIAL PRIMARY KEY,
                     submission_id INTEGER,
@@ -570,7 +582,7 @@ def init_postgres_db():
 
             # Create classrooms table
             print("[STARTUP] Creating classrooms table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE classrooms(
                     id SERIAL PRIMARY KEY,
                     name TEXT,
@@ -587,7 +599,7 @@ def init_postgres_db():
 
             # Create classroom_members table
             print("[STARTUP] Creating classroom_members table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE classroom_members(
                     id SERIAL PRIMARY KEY,
                     classroom_id INTEGER,
@@ -600,7 +612,7 @@ def init_postgres_db():
 
             # Create exam_attempts table
             print("[STARTUP] Creating exam_attempts table...")
-            conn.execute("""
+            cursor.execute("""
                 CREATE TABLE exam_attempts(
                     id SERIAL PRIMARY KEY,
                     student_id INTEGER,
@@ -624,7 +636,7 @@ def init_postgres_db():
             default_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin")
             admin_password = generate_password_hash(default_admin_password)
             print(f"[STARTUP] Admin email: {default_admin_email}")
-            conn.execute(
+            cursor.execute(
                 "INSERT INTO users(name, email, password, role, approved, profile_completed) VALUES(%s,%s,%s,%s,%s,%s)",
                 ("Admin", default_admin_email, admin_password, "admin", 1, 1)
             )
@@ -1047,20 +1059,20 @@ def cleanup_duplicate_submissions():
     try:
         # Find duplicate submissions (same student_id, exam_id)
         cursor = conn.execute("""
-            SELECT student_id, exam_id, COUNT(*) as count
+            SELECT student_id, exam_id, COUNT(*) as submission_count
             FROM submissions
             GROUP BY student_id, exam_id
-            HAVING count > 1
+            HAVING COUNT(*) > 1
         """)
         duplicates = cursor.fetchall()
-        
+
         if not duplicates:
             app.logger.info("No duplicate submissions found")
             conn.close()
             return
-        
+
         # For each duplicate pair, keep the latest submission and delete the rest
-        for student_id, exam_id, count in duplicates:
+        for student_id, exam_id, submission_count in duplicates:
             # Get all submissions for this student/exam, ordered by submitted_at DESC (latest first)
             cursor = conn.execute("""
                 SELECT id, submitted_at
