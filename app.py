@@ -8,6 +8,20 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 
 load_dotenv()
+
+# ── Startup Logging ──────────────────────────────────────────────────────────
+import logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+print("[STARTUP] Loading environment variables...")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+if DATABASE_URL:
+    print(f"[STARTUP] DATABASE_URL detected (PostgreSQL mode enabled)")
+    print(f"[STARTUP] DATABASE_URL prefix: {DATABASE_URL[:20]}..." if len(DATABASE_URL) > 20 else f"[STARTUP] DATABASE_URL: {DATABASE_URL}")
+else:
+    print("[STARTUP] DATABASE_URL not detected (SQLite mode enabled)")
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
 app.permanent_session_lifetime = __import__("datetime").timedelta(minutes=30)
@@ -97,8 +111,8 @@ def enforce_session_timeout():
             return redirect("/")
 
 # ── DB ─────────────────────────────────────────────────────────────────────
-# Database configuration
-DATABASE_URL = os.environ.get("DATABASE_URL")
+# Database configuration (already loaded above)
+# DATABASE_URL is already set from environment variables
 
 class DatabaseConnection:
     """Unified database connection wrapper for PostgreSQL and SQLite."""
@@ -110,14 +124,25 @@ class DatabaseConnection:
     
     def _connect(self):
         """Establish database connection based on environment."""
-        if self.is_postgres:
-            self.conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-        else:
-            db_path = get_db_path()
-            self.conn = sqlite3.connect(db_path, timeout=30)
-            self.conn.row_factory = sqlite3.Row
-            # Enable WAL mode for better concurrency
-            self.conn.execute('PRAGMA journal_mode=WAL')
+        try:
+            if self.is_postgres:
+                print("[STARTUP] Connecting to PostgreSQL...")
+                self.conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+                print("[STARTUP] PostgreSQL connection established successfully")
+            else:
+                print("[STARTUP] Connecting to SQLite...")
+                db_path = get_db_path()
+                self.conn = sqlite3.connect(db_path, timeout=30)
+                self.conn.row_factory = sqlite3.Row
+                # Enable WAL mode for better concurrency
+                self.conn.execute('PRAGMA journal_mode=WAL')
+                print("[STARTUP] SQLite connection established successfully")
+        except Exception as e:
+            print(f"[STARTUP ERROR] Database connection failed: {e}")
+            print(f"[STARTUP ERROR] Full exception: {type(e).__name__}: {e}")
+            import traceback
+            traceback.print_exc()
+            raise
     
     def execute(self, query, params=None):
         """Execute a query with parameters. Handles parameter style differences."""
@@ -258,7 +283,9 @@ def column_exists(conn, table_name, column_name):
 
 def migrate_db():
     """Run database migrations for both PostgreSQL and SQLite."""
+    print("[STARTUP] migrate_db() called")
     if DATABASE_URL:
+        print("[STARTUP] PostgreSQL migration mode")
         # PostgreSQL migration
         conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     else:
@@ -379,200 +406,247 @@ def migrate_db():
 # ── Init DB ────────────────────────────────────────────────────────────────
 def init_db():
     """Initialize database for both PostgreSQL and SQLite."""
+    print("[STARTUP] init_db() called")
     if DATABASE_URL:
+        print("[STARTUP] PostgreSQL mode detected, calling init_postgres_db()...")
         # PostgreSQL initialization
         init_postgres_db()
+        print("[STARTUP] init_postgres_db() completed")
     else:
+        print("[STARTUP] SQLite mode detected, calling init_sqlite_db()...")
         # SQLite initialization
         init_sqlite_db()
+        print("[STARTUP] init_sqlite_db() completed")
+    print("[STARTUP] init_db() completed")
 
 def init_postgres_db():
     """Initialize PostgreSQL database with schema and default admin."""
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    
-    # Check if users table exists
-    if not table_exists(conn, 'users'):
-        # Create users table with all columns
-        conn.execute("""
-            CREATE TABLE users(
-                id SERIAL PRIMARY KEY,
-                name TEXT,
-                email TEXT UNIQUE,
-                password TEXT,
-                role TEXT,
-                approved INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                profile_picture TEXT DEFAULT NULL,
-                phone TEXT DEFAULT NULL,
-                department TEXT DEFAULT '',
-                last_login TIMESTAMP,
-                date_of_birth TEXT DEFAULT NULL,
-                gender TEXT DEFAULT NULL,
-                last_profile_update TIMESTAMP DEFAULT NULL,
-                faculty_id TEXT DEFAULT NULL,
-                designation TEXT DEFAULT NULL,
-                subject TEXT DEFAULT NULL,
-                admin_id TEXT DEFAULT NULL,
-                role_level TEXT DEFAULT NULL,
-                reg_number TEXT DEFAULT NULL,
-                program TEXT DEFAULT NULL,
-                section TEXT DEFAULT NULL,
-                profile_completed INTEGER DEFAULT 0,
-                theme_preference TEXT DEFAULT 'light'
+    try:
+        print("[STARTUP] init_postgres_db() called")
+        print("[STARTUP] Connecting to PostgreSQL for initialization...")
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        print("[STARTUP] PostgreSQL connection established for initialization")
+
+        # Check if users table exists
+        print("[STARTUP] Checking if users table exists...")
+        if not table_exists(conn, 'users'):
+            print("[STARTUP] Users table does not exist, creating schema...")
+
+            # Create users table with all columns
+            print("[STARTUP] Creating users table...")
+            conn.execute("""
+                CREATE TABLE users(
+                    id SERIAL PRIMARY KEY,
+                    name TEXT,
+                    email TEXT UNIQUE,
+                    password TEXT,
+                    role TEXT,
+                    approved INTEGER DEFAULT 1,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    profile_picture TEXT DEFAULT NULL,
+                    phone TEXT DEFAULT NULL,
+                    department TEXT DEFAULT '',
+                    last_login TIMESTAMP,
+                    date_of_birth TEXT DEFAULT NULL,
+                    gender TEXT DEFAULT NULL,
+                    last_profile_update TIMESTAMP DEFAULT NULL,
+                    faculty_id TEXT DEFAULT NULL,
+                    designation TEXT DEFAULT NULL,
+                    subject TEXT DEFAULT NULL,
+                    admin_id TEXT DEFAULT NULL,
+                    role_level TEXT DEFAULT NULL,
+                    reg_number TEXT DEFAULT NULL,
+                    program TEXT DEFAULT NULL,
+                    section TEXT DEFAULT NULL,
+                    profile_completed INTEGER DEFAULT 0,
+                    theme_preference TEXT DEFAULT 'light'
+                )
+            """)
+            print("[STARTUP] Users table created successfully")
+
+            # Create exams table
+            print("[STARTUP] Creating exams table...")
+            conn.execute("""
+                CREATE TABLE exams(
+                    id SERIAL PRIMARY KEY,
+                    title TEXT,
+                    faculty_id INTEGER,
+                    duration INTEGER,
+                    exam_date TEXT,
+                    subject TEXT DEFAULT '',
+                    published INTEGER DEFAULT 0,
+                    launched INTEGER DEFAULT 0,
+                    classroom_id INTEGER DEFAULT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    pass_mark INTEGER DEFAULT 50,
+                    instructions TEXT DEFAULT NULL,
+                    total_marks INTEGER DEFAULT 0,
+                    pass_marks_actual INTEGER DEFAULT 0,
+                    pass_percentage REAL DEFAULT 50.0,
+                    is_archived INTEGER DEFAULT 0,
+                    archived_at TIMESTAMP DEFAULT NULL,
+                    archived_by INTEGER DEFAULT NULL
+                )
+            """)
+            print("[STARTUP] Exams table created successfully")
+
+            # Create questions table
+            print("[STARTUP] Creating questions table...")
+            conn.execute("""
+                CREATE TABLE questions(
+                    id SERIAL PRIMARY KEY,
+                    exam_id INTEGER,
+                    question TEXT,
+                    option1 TEXT,
+                    option2 TEXT,
+                    option3 TEXT,
+                    option4 TEXT,
+                    correct_answer TEXT,
+                    difficulty TEXT DEFAULT 'medium',
+                    marks INTEGER DEFAULT 1
+                )
+            """)
+            print("[STARTUP] Questions table created successfully")
+
+            # Create question_bank table
+            print("[STARTUP] Creating question_bank table...")
+            conn.execute("""
+                CREATE TABLE question_bank(
+                    id SERIAL PRIMARY KEY,
+                    question TEXT,
+                    option1 TEXT,
+                    option2 TEXT,
+                    option3 TEXT,
+                    option4 TEXT,
+                    correct_answer TEXT,
+                    category TEXT,
+                    difficulty TEXT DEFAULT 'medium',
+                    faculty_id INTEGER,
+                    marks INTEGER DEFAULT 1
+                )
+            """)
+            print("[STARTUP] Question_bank table created successfully")
+
+            # Create submissions table
+            print("[STARTUP] Creating submissions table...")
+            conn.execute("""
+                CREATE TABLE submissions(
+                    id SERIAL PRIMARY KEY,
+                    student_id INTEGER,
+                    exam_id INTEGER,
+                    score INTEGER,
+                    tab_switches INTEGER DEFAULT 0,
+                    submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    results_published INTEGER DEFAULT 0,
+                    result_published INTEGER DEFAULT 0,
+                    published_at TIMESTAMP DEFAULT NULL
+                )
+            """)
+            print("[STARTUP] Submissions table created successfully")
+
+            # Create activity_log table
+            print("[STARTUP] Creating activity_log table...")
+            conn.execute("""
+                CREATE TABLE activity_log(
+                    id SERIAL PRIMARY KEY,
+                    user_id INTEGER,
+                    action TEXT,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            print("[STARTUP] Activity_log table created successfully")
+
+            # Create submission_answers table
+            print("[STARTUP] Creating submission_answers table...")
+            conn.execute("""
+                CREATE TABLE submission_answers(
+                    id SERIAL PRIMARY KEY,
+                    submission_id INTEGER,
+                    question_id INTEGER,
+                    student_answer TEXT DEFAULT ''
+                )
+            """)
+            print("[STARTUP] Submission_answers table created successfully")
+
+            # Create classrooms table
+            print("[STARTUP] Creating classrooms table...")
+            conn.execute("""
+                CREATE TABLE classrooms(
+                    id SERIAL PRIMARY KEY,
+                    name TEXT,
+                    subject TEXT DEFAULT '',
+                    code TEXT UNIQUE,
+                    faculty_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    is_archived INTEGER DEFAULT 0,
+                    archived_at TIMESTAMP DEFAULT NULL,
+                    archived_by INTEGER DEFAULT NULL
+                )
+            """)
+            print("[STARTUP] Classrooms table created successfully")
+
+            # Create classroom_members table
+            print("[STARTUP] Creating classroom_members table...")
+            conn.execute("""
+                CREATE TABLE classroom_members(
+                    id SERIAL PRIMARY KEY,
+                    classroom_id INTEGER,
+                    student_id INTEGER,
+                    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(classroom_id, student_id)
+                )
+            """)
+            print("[STARTUP] Classroom_members table created successfully")
+
+            # Create exam_attempts table
+            print("[STARTUP] Creating exam_attempts table...")
+            conn.execute("""
+                CREATE TABLE exam_attempts(
+                    id SERIAL PRIMARY KEY,
+                    student_id INTEGER,
+                    exam_id INTEGER,
+                    current_question INTEGER DEFAULT 0,
+                    remaining_time INTEGER DEFAULT 0,
+                    answers TEXT DEFAULT '{}',
+                    last_saved TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(student_id, exam_id)
+                )
+            """)
+            print("[STARTUP] Exam_attempts table created successfully")
+
+            print("[STARTUP] All tables created successfully, committing...")
+            conn.commit()
+            print("[STARTUP] Tables committed successfully")
+
+            # Create default admin account using environment variables or fallback
+            print("[STARTUP] Creating default admin account...")
+            default_admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@mail.com")
+            default_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin")
+            admin_password = generate_password_hash(default_admin_password)
+            print(f"[STARTUP] Admin email: {default_admin_email}")
+            conn.execute(
+                "INSERT INTO users(name, email, password, role, approved, profile_completed) VALUES(%s,%s,%s,%s,%s,%s)",
+                ("Admin", default_admin_email, admin_password, "admin", 1, 1)
             )
-        """)
-        
-        # Create exams table
-        conn.execute("""
-            CREATE TABLE exams(
-                id SERIAL PRIMARY KEY,
-                title TEXT,
-                faculty_id INTEGER,
-                duration INTEGER,
-                exam_date TEXT,
-                subject TEXT DEFAULT '',
-                published INTEGER DEFAULT 0,
-                launched INTEGER DEFAULT 0,
-                classroom_id INTEGER DEFAULT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                pass_mark INTEGER DEFAULT 50,
-                instructions TEXT DEFAULT NULL,
-                total_marks INTEGER DEFAULT 0,
-                pass_marks_actual INTEGER DEFAULT 0,
-                pass_percentage REAL DEFAULT 50.0,
-                is_archived INTEGER DEFAULT 0,
-                archived_at TIMESTAMP DEFAULT NULL,
-                archived_by INTEGER DEFAULT NULL
-            )
-        """)
-        
-        # Create questions table
-        conn.execute("""
-            CREATE TABLE questions(
-                id SERIAL PRIMARY KEY,
-                exam_id INTEGER,
-                question TEXT,
-                option1 TEXT,
-                option2 TEXT,
-                option3 TEXT,
-                option4 TEXT,
-                correct_answer TEXT,
-                difficulty TEXT DEFAULT 'medium',
-                marks INTEGER DEFAULT 1
-            )
-        """)
-        
-        # Create question_bank table
-        conn.execute("""
-            CREATE TABLE question_bank(
-                id SERIAL PRIMARY KEY,
-                question TEXT,
-                option1 TEXT,
-                option2 TEXT,
-                option3 TEXT,
-                option4 TEXT,
-                correct_answer TEXT,
-                category TEXT,
-                difficulty TEXT DEFAULT 'medium',
-                faculty_id INTEGER,
-                marks INTEGER DEFAULT 1
-            )
-        """)
-        
-        # Create submissions table
-        conn.execute("""
-            CREATE TABLE submissions(
-                id SERIAL PRIMARY KEY,
-                student_id INTEGER,
-                exam_id INTEGER,
-                score INTEGER,
-                tab_switches INTEGER DEFAULT 0,
-                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                results_published INTEGER DEFAULT 0,
-                result_published INTEGER DEFAULT 0,
-                published_at TIMESTAMP DEFAULT NULL
-            )
-        """)
-        
-        # Create activity_log table
-        conn.execute("""
-            CREATE TABLE activity_log(
-                id SERIAL PRIMARY KEY,
-                user_id INTEGER,
-                action TEXT,
-                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Create submission_answers table
-        conn.execute("""
-            CREATE TABLE submission_answers(
-                id SERIAL PRIMARY KEY,
-                submission_id INTEGER,
-                question_id INTEGER,
-                student_answer TEXT DEFAULT ''
-            )
-        """)
-        
-        # Create classrooms table
-        conn.execute("""
-            CREATE TABLE classrooms(
-                id SERIAL PRIMARY KEY,
-                name TEXT,
-                subject TEXT DEFAULT '',
-                code TEXT UNIQUE,
-                faculty_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_archived INTEGER DEFAULT 0,
-                archived_at TIMESTAMP DEFAULT NULL,
-                archived_by INTEGER DEFAULT NULL
-            )
-        """)
-        
-        # Create classroom_members table
-        conn.execute("""
-            CREATE TABLE classroom_members(
-                id SERIAL PRIMARY KEY,
-                classroom_id INTEGER,
-                student_id INTEGER,
-                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(classroom_id, student_id)
-            )
-        """)
-        
-        # Create exam_attempts table
-        conn.execute("""
-            CREATE TABLE exam_attempts(
-                id SERIAL PRIMARY KEY,
-                student_id INTEGER,
-                exam_id INTEGER,
-                current_question INTEGER DEFAULT 0,
-                remaining_time INTEGER DEFAULT 0,
-                answers TEXT DEFAULT '{}',
-                last_saved TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(student_id, exam_id)
-            )
-        """)
-        
-        # Create default admin account using environment variables or fallback
-        default_admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@mail.com")
-        default_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin")
-        admin_password = generate_password_hash(default_admin_password)
-        conn.execute(
-            "INSERT INTO users(name, email, password, role, approved, profile_completed) VALUES(%s,%s,%s,%s,%s,%s)",
-            ("Admin", default_admin_email, admin_password, "admin", 1, 1)
-        )
-        
-        conn.commit()
-    else:
-        # Run migrations for existing PostgreSQL database
-        migrate_db()
-    
-    conn.close()
-    
+            print("[STARTUP] Default admin account inserted")
+            conn.commit()
+            print("[STARTUP] Default admin account committed")
+            print("[STARTUP] init_postgres_db() completed successfully")
+        else:
+            print("[STARTUP] Users table already exists, skipping schema creation")
+    except Exception as e:
+        print(f"[STARTUP ERROR] init_postgres_db() failed: {e}")
+        print(f"[STARTUP ERROR] Full exception: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
     # Clean up orphan records on startup
     cleanup_orphan_records()
-    
+
     # Clean up duplicate submissions on startup
     cleanup_duplicate_submissions()
 
@@ -1112,10 +1186,17 @@ def validate_schema(conn):
     except Exception as e:
         app.logger.exception(f"Schema validation failed: {e}")
 
+# ── Startup Sequence ──────────────────────────────────────────────────────────
+print("[STARTUP] ===== Starting EduSphere Application =====")
+print("[STARTUP] Initializing database...")
 # Initialize database first (creates schema for fresh deployments)
 init_db()
+print("[STARTUP] Database initialization completed")
+print("[STARTUP] Running migrations...")
 # Then run migrations for existing databases
 migrate_db()
+print("[STARTUP] Migrations completed")
+print("[STARTUP] ===== Startup Sequence Completed =====")
 
 # Validate schema at startup
 conn = get_db()
