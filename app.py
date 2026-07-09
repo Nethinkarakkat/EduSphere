@@ -4,6 +4,8 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 from werkzeug.security import generate_password_hash, check_password_hash
 from fpdf import FPDF
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 load_dotenv()
 app = Flask(__name__)
@@ -95,6 +97,83 @@ def enforce_session_timeout():
             return redirect("/")
 
 # ── DB ─────────────────────────────────────────────────────────────────────
+# Database configuration
+DATABASE_URL = os.environ.get("DATABASE_URL")
+
+class DatabaseConnection:
+    """Unified database connection wrapper for PostgreSQL and SQLite."""
+    
+    def __init__(self):
+        self.is_postgres = DATABASE_URL is not None
+        self.conn = None
+        self._connect()
+    
+    def _connect(self):
+        """Establish database connection based on environment."""
+        if self.is_postgres:
+            self.conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+        else:
+            db_path = get_db_path()
+            self.conn = sqlite3.connect(db_path, timeout=30)
+            self.conn.row_factory = sqlite3.Row
+            # Enable WAL mode for better concurrency
+            self.conn.execute('PRAGMA journal_mode=WAL')
+    
+    def execute(self, query, params=None):
+        """Execute a query with parameters. Handles parameter style differences."""
+        if params is None:
+            params = ()
+        
+        if self.is_postgres:
+            # PostgreSQL uses %s placeholders
+            cursor = self.conn.cursor()
+            cursor.execute(query, params)
+            return cursor
+        else:
+            # SQLite uses ? placeholders - convert %s to ?
+            sqlite_query = query.replace('%s', '?')
+            cursor = self.conn.cursor()
+            cursor.execute(sqlite_query, params)
+            return cursor
+    
+    def executemany(self, query, params):
+        """Execute multiple queries with parameters."""
+        if self.is_postgres:
+            cursor = self.conn.cursor()
+            cursor.executemany(query, params)
+            return cursor
+        else:
+            # SQLite uses ? placeholders - convert %s to ?
+            sqlite_query = query.replace('%s', '?')
+            cursor = self.conn.cursor()
+            cursor.executemany(sqlite_query, params)
+            return cursor
+    
+    def commit(self):
+        """Commit the transaction."""
+        self.conn.commit()
+    
+    def rollback(self):
+        """Rollback the transaction."""
+        self.conn.rollback()
+    
+    def close(self):
+        """Close the connection."""
+        if self.conn:
+            self.conn.close()
+    
+    def __enter__(self):
+        """Context manager entry."""
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Context manager exit."""
+        if exc_type is None:
+            self.commit()
+        else:
+            self.rollback()
+        self.close()
+
 def get_db_path():
     """Get the database path and ensure the instance directory exists."""
     instance_path = os.path.join(os.path.dirname(__file__), 'instance')
@@ -102,18 +181,17 @@ def get_db_path():
     return os.path.join(instance_path, 'database.db')
 
 def get_db():
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get a database connection (unified for PostgreSQL and SQLite)."""
+    return DatabaseConnection()
 
 def log_activity(user_id, action):
     try:
         conn = get_db()
         from datetime import datetime
         local_timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        conn.execute("INSERT INTO activity_log(user_id,action,timestamp) VALUES(?,?,?)", (user_id, action, local_timestamp))
+        conn.execute("INSERT INTO activity_log(user_id,action,timestamp) VALUES(%s,%s,%s)", (user_id, action, local_timestamp))
         conn.commit()
+        conn.close()
     except Exception as e:
         app.logger.error(f"Activity log error: {e}")
 
@@ -133,8 +211,8 @@ def check_profile_complete():
     if role not in ("student", "faculty"):
         return None
     conn = get_db()
-    user = conn.execute("SELECT profile_completed FROM users WHERE id=?",
-                        (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT profile_completed FROM users WHERE id=%s", (session["user_id"],)).fetchone()
+    conn.close()
     if user and not user["profile_completed"]:
         return redirect("/complete_profile")
     return None
@@ -149,74 +227,91 @@ def gen_code(n=6):
 # ── Migrations ───────────────────────────────────────────────────────────────
 def table_exists(conn, table_name):
     """Check if a table exists in the database."""
-    c = conn.cursor()
-    c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
-    return c.fetchone() is not None
+    if DATABASE_URL:
+        # PostgreSQL
+        cursor = conn.execute("""
+            SELECT table_name FROM information_schema.tables 
+            WHERE table_schema = 'public' AND table_name = %s
+        """, (table_name,))
+        return cursor.fetchone() is not None
+    else:
+        # SQLite - use ? placeholder
+        c = conn.cursor()
+        c.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table_name,))
+        return c.fetchone() is not None
+
+def column_exists(conn, table_name, column_name):
+    """Check if a column exists in a table."""
+    if DATABASE_URL:
+        # PostgreSQL
+        cursor = conn.execute("""
+            SELECT column_name FROM information_schema.columns 
+            WHERE table_schema = 'public' AND table_name = %s AND column_name = %s
+        """, (table_name, column_name))
+        return cursor.fetchone() is not None
+    else:
+        # SQLite - use PRAGMA with proper string formatting
+        c = conn.cursor()
+        c.execute(f"PRAGMA table_info({table_name})")
+        columns = [column[1] for column in c.fetchall()]
+        return column_name in columns
 
 def migrate_db():
-    db_path = get_db_path()
-    conn = sqlite3.connect(db_path)
-    c = conn.cursor()
+    """Run database migrations for both PostgreSQL and SQLite."""
+    if DATABASE_URL:
+        # PostgreSQL migration
+        conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    else:
+        # SQLite migration
+        db_path = get_db_path()
+        conn = sqlite3.connect(db_path, timeout=30)
+        conn.row_factory = sqlite3.Row
+        # Enable WAL mode for better concurrency
+        conn.execute('PRAGMA journal_mode=WAL')
     
     # Only run migrations if tables exist (fresh databases are handled by init_db)
     if not table_exists(conn, 'submissions'):
         conn.close()
         return
     
+    # Helper function to add column if it doesn't exist
+    def add_column_if_missing(table, column, definition):
+        if not column_exists(conn, table, column):
+            if DATABASE_URL:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            else:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
+            conn.commit()
+    
     # Check if tab_switches column exists in submissions table
-    c.execute("PRAGMA table_info(submissions)")
-    columns = [column[1] for column in c.fetchall()]
-    if "tab_switches" not in columns:
-        c.execute("ALTER TABLE submissions ADD COLUMN tab_switches INTEGER DEFAULT 0")
-        conn.commit()
+    add_column_if_missing('submissions', 'tab_switches', 'INTEGER DEFAULT 0')
+    
     # Check if profile_picture column exists in users table
-    c.execute("PRAGMA table_info(users)")
-    user_columns = [column[1] for column in c.fetchall()]
-    if "profile_picture" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN profile_picture TEXT DEFAULT NULL")
-        conn.commit()
+    add_column_if_missing('users', 'profile_picture', 'TEXT DEFAULT NULL')
+    
     # Check if phone column exists in users table
-    c.execute("PRAGMA table_info(users)")
-    if "phone" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN phone TEXT DEFAULT NULL")
-        conn.commit()
+    add_column_if_missing('users', 'phone', 'TEXT DEFAULT NULL')
+    
     # Check if pass_mark column exists in exams table
-    c.execute("PRAGMA table_info(exams)")
-    exam_columns = [column[1] for column in c.fetchall()]
-    if "pass_mark" not in exam_columns:
-        c.execute("ALTER TABLE exams ADD COLUMN pass_mark INTEGER DEFAULT 50")
-        conn.commit()
+    add_column_if_missing('exams', 'pass_mark', 'INTEGER DEFAULT 50')
+    
     # Check if instructions column exists in exams table
-    c.execute("PRAGMA table_info(exams)")
-    if "instructions" not in exam_columns:
-        c.execute("ALTER TABLE exams ADD COLUMN instructions TEXT DEFAULT NULL")
-        conn.commit()
+    add_column_if_missing('exams', 'instructions', 'TEXT DEFAULT NULL')
+    
     # Check if marks column exists in questions table
-    c.execute("PRAGMA table_info(questions)")
-    question_columns = [column[1] for column in c.fetchall()]
-    if "marks" not in question_columns:
-        c.execute("ALTER TABLE questions ADD COLUMN marks INTEGER DEFAULT 1")
-        conn.commit()
+    add_column_if_missing('questions', 'marks', 'INTEGER DEFAULT 1')
+    
     # Check if results_published column exists in submissions table
-    c.execute("PRAGMA table_info(submissions)")
-    submission_columns = [column[1] for column in c.fetchall()]
-    if "results_published" not in submission_columns:
-        c.execute("ALTER TABLE submissions ADD COLUMN results_published INTEGER DEFAULT 0")
-        conn.commit()
-    # Check if result_published column exists in submissions table (for submission-level publishing)
-    c.execute("PRAGMA table_info(submissions)")
-    submission_columns = [column[1] for column in c.fetchall()]
-    if "result_published" not in submission_columns:
-        c.execute("ALTER TABLE submissions ADD COLUMN result_published INTEGER DEFAULT 0")
-        conn.commit()
+    add_column_if_missing('submissions', 'results_published', 'INTEGER DEFAULT 0')
+    
     # Check if published_at column exists in submissions table
-    c.execute("PRAGMA table_info(submissions)")
-    submission_columns = [column[1] for column in c.fetchall()]
-    if "published_at" not in submission_columns:
-        c.execute("ALTER TABLE submissions ADD COLUMN published_at DATETIME DEFAULT NULL")
-        conn.commit()
+    add_column_if_missing('submissions', 'published_at', 'TIMESTAMP DEFAULT NULL')
+
+    # Check if result_published column exists in submissions table (for submission-level publishing)
+    if not column_exists(conn, 'submissions', 'result_published'):
+        add_column_if_missing('submissions', 'result_published', 'INTEGER DEFAULT 0')
         # Migrate existing data: mark submissions from already-published exams as published
-        c.execute("""
+        conn.execute("""
             UPDATE submissions
             SET result_published = 1,
                 published_at = CURRENT_TIMESTAMP
@@ -225,127 +320,264 @@ def migrate_db():
             )
         """)
         conn.commit()
+    
     # Check if total_marks column exists in exams table
-    c.execute("PRAGMA table_info(exams)")
-    if "total_marks" not in exam_columns:
-        c.execute("ALTER TABLE exams ADD COLUMN total_marks INTEGER DEFAULT 0")
-        conn.commit()
+    add_column_if_missing('exams', 'total_marks', 'INTEGER DEFAULT 0')
+    
     # Check if pass_marks_actual column exists in exams table
-    c.execute("PRAGMA table_info(exams)")
-    if "pass_marks_actual" not in exam_columns:
-        c.execute("ALTER TABLE exams ADD COLUMN pass_marks_actual INTEGER DEFAULT 0")
-        conn.commit()
+    add_column_if_missing('exams', 'pass_marks_actual', 'INTEGER DEFAULT 0')
+    
     # Check if pass_percentage column exists in exams table
-    c.execute("PRAGMA table_info(exams)")
-    exam_columns = [column[1] for column in c.fetchall()]
-    if "pass_percentage" not in exam_columns:
-        c.execute("ALTER TABLE exams ADD COLUMN pass_percentage REAL DEFAULT 50.0")
-        conn.commit()
+    add_column_if_missing('exams', 'pass_percentage', 'REAL DEFAULT 50.0')
+    
     # Check if marks column exists in question_bank table
-    c.execute("PRAGMA table_info(question_bank)")
-    qb_columns = [column[1] for column in c.fetchall()]
-    if "marks" not in qb_columns:
-        c.execute("ALTER TABLE question_bank ADD COLUMN marks INTEGER DEFAULT 1")
-        conn.commit()
+    add_column_if_missing('question_bank', 'marks', 'INTEGER DEFAULT 1')
     
     # Add new profile fields for unified profile redesign
-    c.execute("PRAGMA table_info(users)")
-    user_columns = [column[1] for column in c.fetchall()]
+    add_column_if_missing('users', 'date_of_birth', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'gender', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'last_profile_update', 'TIMESTAMP DEFAULT NULL')
+    add_column_if_missing('users', 'faculty_id', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'designation', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'subject', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'admin_id', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'role_level', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'reg_number', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'program', 'TEXT DEFAULT NULL')
+    add_column_if_missing('users', 'section', 'TEXT DEFAULT NULL')
     
-    # Common fields
-    if "date_of_birth" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN date_of_birth TEXT DEFAULT NULL")
-        conn.commit()
-    if "gender" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN gender TEXT DEFAULT NULL")
-        conn.commit()
-    if "last_profile_update" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN last_profile_update DATETIME DEFAULT NULL")
-        conn.commit()
+    # Backfill submitted_at for old submissions where it was never set
+    if DATABASE_URL:
+        null_rows = conn.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC").fetchall()
+    else:
+        null_rows = conn.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC").fetchall()
     
-    # Student-specific fields
-    if "faculty_id" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN faculty_id TEXT DEFAULT NULL")
-        conn.commit()
-    if "designation" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN designation TEXT DEFAULT NULL")
-        conn.commit()
-    if "subject" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN subject TEXT DEFAULT NULL")
-        conn.commit()
-    
-    # Admin-specific fields
-    if "admin_id" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN admin_id TEXT DEFAULT NULL")
-        conn.commit()
-    if "role_level" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN role_level TEXT DEFAULT NULL")
-        conn.commit()
-
-    # Student-specific academic fields (referenced by student profile form but were
-    # missing from the schema, causing profile saves to fail)
-    if "reg_number" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN reg_number TEXT DEFAULT NULL")
-        conn.commit()
-    if "program" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN program TEXT DEFAULT NULL")
-        conn.commit()
-    if "section" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN section TEXT DEFAULT NULL")
-        conn.commit()
-
-    # Backfill submitted_at for old submissions where it was never set (column had
-    # no DB-level default, so legacy rows are NULL). This breaks "sort by latest/
-    # oldest". Use each row's id order as a stable, monotonically increasing
-    # timestamp fallback so old records still sort correctly relative to each other.
-    c.execute("SELECT id FROM submissions WHERE submitted_at IS NULL ORDER BY id ASC")
-    null_rows = c.fetchall()
     if null_rows:
         base_time = datetime(2026, 1, 1)
         for i, row in enumerate(null_rows):
             fallback_ts = (base_time + timedelta(minutes=i)).strftime('%Y-%m-%d %H:%M:%S')
-            c.execute("UPDATE submissions SET submitted_at=? WHERE id=?", (fallback_ts, row[0]))
+            conn.execute("UPDATE submissions SET submitted_at=%s WHERE id=%s", (fallback_ts, row['id']))
         conn.commit()
-
-    # Profile completion workflow: admins are always complete; existing
-    # students/faculty are marked complete so they aren't forced through
-    # onboarding retroactively (only brand-new signups will hit the flow).
-    if "profile_completed" not in user_columns:
-        c.execute("ALTER TABLE users ADD COLUMN profile_completed INTEGER DEFAULT 0")
+    
+    # Profile completion workflow
+    if not column_exists(conn, 'users', 'profile_completed'):
+        add_column_if_missing('users', 'profile_completed', 'INTEGER DEFAULT 0')
+        conn.execute("UPDATE users SET profile_completed=1 WHERE role='admin'")
+        conn.execute("UPDATE users SET profile_completed=1 WHERE role IN ('student','faculty') AND approved=1")
         conn.commit()
-        c.execute("UPDATE users SET profile_completed=1 WHERE role='admin'")
-        c.execute("UPDATE users SET profile_completed=1 WHERE role IN ('student','faculty') AND approved=1")
-        conn.commit()
-
-    # ── Archive system columns ──────────────────────────────────────────────
-    c.execute("PRAGMA table_info(classrooms)")
-    classroom_cols = [r[1] for r in c.fetchall()]
-    if "is_archived" not in classroom_cols:
-        c.execute("ALTER TABLE classrooms ADD COLUMN is_archived INTEGER DEFAULT 0")
-        conn.commit()
-    if "archived_at" not in classroom_cols:
-        c.execute("ALTER TABLE classrooms ADD COLUMN archived_at DATETIME DEFAULT NULL")
-        conn.commit()
-    if "archived_by" not in classroom_cols:
-        c.execute("ALTER TABLE classrooms ADD COLUMN archived_by INTEGER DEFAULT NULL")
-        conn.commit()
-
-    c.execute("PRAGMA table_info(exams)")
-    exam_cols_arch = [r[1] for r in c.fetchall()]
-    if "is_archived" not in exam_cols_arch:
-        c.execute("ALTER TABLE exams ADD COLUMN is_archived INTEGER DEFAULT 0")
-        conn.commit()
-    if "archived_at" not in exam_cols_arch:
-        c.execute("ALTER TABLE exams ADD COLUMN archived_at DATETIME DEFAULT NULL")
-        conn.commit()
-    if "archived_by" not in exam_cols_arch:
-        c.execute("ALTER TABLE exams ADD COLUMN archived_by INTEGER DEFAULT NULL")
-        conn.commit()
-
+    
+    # Archive system columns
+    add_column_if_missing('classrooms', 'is_archived', 'INTEGER DEFAULT 0')
+    add_column_if_missing('classrooms', 'archived_at', 'TIMESTAMP DEFAULT NULL')
+    add_column_if_missing('classrooms', 'archived_by', 'INTEGER DEFAULT NULL')
+    add_column_if_missing('exams', 'is_archived', 'INTEGER DEFAULT 0')
+    add_column_if_missing('exams', 'archived_at', 'TIMESTAMP DEFAULT NULL')
+    add_column_if_missing('exams', 'archived_by', 'INTEGER DEFAULT NULL')
+    
     conn.close()
 
 # ── Init DB ────────────────────────────────────────────────────────────────
 def init_db():
+    """Initialize database for both PostgreSQL and SQLite."""
+    if DATABASE_URL:
+        # PostgreSQL initialization
+        init_postgres_db()
+    else:
+        # SQLite initialization
+        init_sqlite_db()
+
+def init_postgres_db():
+    """Initialize PostgreSQL database with schema and default admin."""
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    
+    # Check if users table exists
+    if not table_exists(conn, 'users'):
+        # Create users table with all columns
+        conn.execute("""
+            CREATE TABLE users(
+                id SERIAL PRIMARY KEY,
+                name TEXT,
+                email TEXT UNIQUE,
+                password TEXT,
+                role TEXT,
+                approved INTEGER DEFAULT 1,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                profile_picture TEXT DEFAULT NULL,
+                phone TEXT DEFAULT NULL,
+                department TEXT DEFAULT '',
+                last_login TIMESTAMP,
+                date_of_birth TEXT DEFAULT NULL,
+                gender TEXT DEFAULT NULL,
+                last_profile_update TIMESTAMP DEFAULT NULL,
+                faculty_id TEXT DEFAULT NULL,
+                designation TEXT DEFAULT NULL,
+                subject TEXT DEFAULT NULL,
+                admin_id TEXT DEFAULT NULL,
+                role_level TEXT DEFAULT NULL,
+                reg_number TEXT DEFAULT NULL,
+                program TEXT DEFAULT NULL,
+                section TEXT DEFAULT NULL,
+                profile_completed INTEGER DEFAULT 0,
+                theme_preference TEXT DEFAULT 'light'
+            )
+        """)
+        
+        # Create exams table
+        conn.execute("""
+            CREATE TABLE exams(
+                id SERIAL PRIMARY KEY,
+                title TEXT,
+                faculty_id INTEGER,
+                duration INTEGER,
+                exam_date TEXT,
+                subject TEXT DEFAULT '',
+                published INTEGER DEFAULT 0,
+                launched INTEGER DEFAULT 0,
+                classroom_id INTEGER DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                pass_mark INTEGER DEFAULT 50,
+                instructions TEXT DEFAULT NULL,
+                total_marks INTEGER DEFAULT 0,
+                pass_marks_actual INTEGER DEFAULT 0,
+                pass_percentage REAL DEFAULT 50.0,
+                is_archived INTEGER DEFAULT 0,
+                archived_at TIMESTAMP DEFAULT NULL,
+                archived_by INTEGER DEFAULT NULL
+            )
+        """)
+        
+        # Create questions table
+        conn.execute("""
+            CREATE TABLE questions(
+                id SERIAL PRIMARY KEY,
+                exam_id INTEGER,
+                question TEXT,
+                option1 TEXT,
+                option2 TEXT,
+                option3 TEXT,
+                option4 TEXT,
+                correct_answer TEXT,
+                difficulty TEXT DEFAULT 'medium',
+                marks INTEGER DEFAULT 1
+            )
+        """)
+        
+        # Create question_bank table
+        conn.execute("""
+            CREATE TABLE question_bank(
+                id SERIAL PRIMARY KEY,
+                question TEXT,
+                option1 TEXT,
+                option2 TEXT,
+                option3 TEXT,
+                option4 TEXT,
+                correct_answer TEXT,
+                category TEXT,
+                difficulty TEXT DEFAULT 'medium',
+                faculty_id INTEGER,
+                marks INTEGER DEFAULT 1
+            )
+        """)
+        
+        # Create submissions table
+        conn.execute("""
+            CREATE TABLE submissions(
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER,
+                exam_id INTEGER,
+                score INTEGER,
+                tab_switches INTEGER DEFAULT 0,
+                submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                results_published INTEGER DEFAULT 0,
+                result_published INTEGER DEFAULT 0,
+                published_at TIMESTAMP DEFAULT NULL
+            )
+        """)
+        
+        # Create activity_log table
+        conn.execute("""
+            CREATE TABLE activity_log(
+                id SERIAL PRIMARY KEY,
+                user_id INTEGER,
+                action TEXT,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create submission_answers table
+        conn.execute("""
+            CREATE TABLE submission_answers(
+                id SERIAL PRIMARY KEY,
+                submission_id INTEGER,
+                question_id INTEGER,
+                student_answer TEXT DEFAULT ''
+            )
+        """)
+        
+        # Create classrooms table
+        conn.execute("""
+            CREATE TABLE classrooms(
+                id SERIAL PRIMARY KEY,
+                name TEXT,
+                subject TEXT DEFAULT '',
+                code TEXT UNIQUE,
+                faculty_id INTEGER,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                is_archived INTEGER DEFAULT 0,
+                archived_at TIMESTAMP DEFAULT NULL,
+                archived_by INTEGER DEFAULT NULL
+            )
+        """)
+        
+        # Create classroom_members table
+        conn.execute("""
+            CREATE TABLE classroom_members(
+                id SERIAL PRIMARY KEY,
+                classroom_id INTEGER,
+                student_id INTEGER,
+                joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(classroom_id, student_id)
+            )
+        """)
+        
+        # Create exam_attempts table
+        conn.execute("""
+            CREATE TABLE exam_attempts(
+                id SERIAL PRIMARY KEY,
+                student_id INTEGER,
+                exam_id INTEGER,
+                current_question INTEGER DEFAULT 0,
+                remaining_time INTEGER DEFAULT 0,
+                answers TEXT DEFAULT '{}',
+                last_saved TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(student_id, exam_id)
+            )
+        """)
+        
+        # Create default admin account using environment variables or fallback
+        default_admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@mail.com")
+        default_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin")
+        admin_password = generate_password_hash(default_admin_password)
+        conn.execute(
+            "INSERT INTO users(name, email, password, role, approved, profile_completed) VALUES(%s,%s,%s,%s,%s,%s)",
+            ("Admin", default_admin_email, admin_password, "admin", 1, 1)
+        )
+        
+        conn.commit()
+    else:
+        # Run migrations for existing PostgreSQL database
+        migrate_db()
+    
+    conn.close()
+    
+    # Clean up orphan records on startup
+    cleanup_orphan_records()
+    
+    # Clean up duplicate submissions on startup
+    cleanup_duplicate_submissions()
+
+def init_sqlite_db():
+    """Initialize SQLite database with schema and default admin."""
     db_path = get_db_path()
     
     # Check if database file exists
@@ -353,8 +585,10 @@ def init_db():
     
     # If database doesn't exist, create fresh database with schema and default admin
     if not db_exists:
-        conn = sqlite3.connect(db_path)
+        conn = sqlite3.connect(db_path, timeout=30)
         c = conn.cursor()
+        # Enable WAL mode for better concurrency
+        conn.execute('PRAGMA journal_mode=WAL')
         
         # Create users table with all columns
         c.execute("""
@@ -502,11 +736,13 @@ def init_db():
             )
         """)
         
-        # Create default admin account
-        admin_password = generate_password_hash("Admin@123")
+        # Create default admin account using environment variables or fallback
+        default_admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@mail.com")
+        default_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin")
+        admin_password = generate_password_hash(default_admin_password)
         c.execute(
             "INSERT INTO users(name, email, password, role, approved, profile_completed) VALUES(?,?,?,?,?,?)",
-            ("Admin", "admin@edusphere.com", admin_password, "admin", 1, 1)
+            ("Admin", default_admin_email, admin_password, "admin", 1, 1)
         )
         
         conn.commit()
@@ -514,8 +750,10 @@ def init_db():
         return
     
     # If database exists, run migration logic
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path, timeout=30)
     c = conn.cursor()
+    # Enable WAL mode for better concurrency
+    conn.execute('PRAGMA journal_mode=WAL')
     # Check if email column has UNIQUE constraint, add it if missing
     c.execute("PRAGMA table_info(users)")
     columns = c.fetchall()
@@ -629,9 +867,10 @@ def init_db():
     # seed admin - check for existing admin by role, not by hardcoded email
     c.execute("SELECT id FROM users WHERE role='admin' LIMIT 1")
     if not c.fetchone():
-        pw = generate_password_hash("admin")
-        c.execute("INSERT OR IGNORE INTO users(name,email,password,role,approved) VALUES(?,?,?,?,?)",
-                  ("Admin","admin@mail.com",pw,"admin",1))
+        default_admin_email = os.environ.get("DEFAULT_ADMIN_EMAIL", "admin@mail.com")
+        default_admin_password = os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin")
+        pw = generate_password_hash(default_admin_password)
+        c.execute("INSERT OR IGNORE INTO users(name,email,password,role,approved) VALUES(?,?,?,?,?)", ("Admin",default_admin_email,pw,"admin",1))
     conn.commit()
     conn.close()
     
@@ -644,78 +883,77 @@ def init_db():
 def cleanup_orphan_records():
     """Remove orphan records from all tables to ensure data integrity."""
     conn = get_db()
-    c = conn.cursor()
     
     try:
         # Remove submission_answers where submission_id doesn't exist in submissions
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM submission_answers
             WHERE submission_id NOT IN (SELECT id FROM submissions)
         """)
-        orphan_answers = c.rowcount
+        orphan_answers = cursor.rowcount
         
         # Remove submission_answers where question_id doesn't exist in questions
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM submission_answers
             WHERE question_id NOT IN (SELECT id FROM questions)
         """)
-        orphan_answers += c.rowcount
+        orphan_answers += cursor.rowcount
         
         # Remove submissions where student_id doesn't exist in users
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM submissions
             WHERE student_id NOT IN (SELECT id FROM users)
         """)
-        orphan_submissions = c.rowcount
+        orphan_submissions = cursor.rowcount
         
         # Remove submissions where exam_id doesn't exist in exams
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM submissions
             WHERE exam_id NOT IN (SELECT id FROM exams)
         """)
-        orphan_submissions += c.rowcount
+        orphan_submissions += cursor.rowcount
         
         # Remove exam_attempts where student_id doesn't exist in users
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM exam_attempts
             WHERE student_id NOT IN (SELECT id FROM users)
         """)
-        orphan_attempts = c.rowcount
+        orphan_attempts = cursor.rowcount
         
         # Remove exam_attempts where exam_id doesn't exist in exams
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM exam_attempts
             WHERE exam_id NOT IN (SELECT id FROM exams)
         """)
-        orphan_attempts += c.rowcount
+        orphan_attempts += cursor.rowcount
         
         # Remove classroom_members where classroom_id doesn't exist in classrooms
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM classroom_members
             WHERE classroom_id NOT IN (SELECT id FROM classrooms)
         """)
-        orphan_members = c.rowcount
+        orphan_members = cursor.rowcount
         
         # Remove classroom_members where student_id doesn't exist in users
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM classroom_members
             WHERE student_id NOT IN (SELECT id FROM users)
         """)
-        orphan_members += c.rowcount
+        orphan_members += cursor.rowcount
         
         # Remove questions where exam_id doesn't exist in exams
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM questions
             WHERE exam_id NOT IN (SELECT id FROM exams)
         """)
-        orphan_questions = c.rowcount
+        orphan_questions = cursor.rowcount
         
         # Remove question_bank where faculty_id doesn't exist in users
-        c.execute("""
+        cursor = conn.execute("""
             DELETE FROM question_bank
             WHERE faculty_id NOT IN (SELECT id FROM users)
         """)
-        orphan_bank = c.rowcount
+        orphan_bank = cursor.rowcount
         
         conn.commit()
         
@@ -731,17 +969,16 @@ def cleanup_orphan_records():
 def cleanup_duplicate_submissions():
     """Remove duplicate submissions, keeping only the latest valid submission per (student_id, exam_id)."""
     conn = get_db()
-    c = conn.cursor()
     
     try:
         # Find duplicate submissions (same student_id, exam_id)
-        c.execute("""
+        cursor = conn.execute("""
             SELECT student_id, exam_id, COUNT(*) as count
             FROM submissions
             GROUP BY student_id, exam_id
             HAVING count > 1
         """)
-        duplicates = c.fetchall()
+        duplicates = cursor.fetchall()
         
         if not duplicates:
             app.logger.info("No duplicate submissions found")
@@ -751,13 +988,13 @@ def cleanup_duplicate_submissions():
         # For each duplicate pair, keep the latest submission and delete the rest
         for student_id, exam_id, count in duplicates:
             # Get all submissions for this student/exam, ordered by submitted_at DESC (latest first)
-            c.execute("""
+            cursor = conn.execute("""
                 SELECT id, submitted_at
                 FROM submissions
-                WHERE student_id = ? AND exam_id = ?
+                WHERE student_id = %s AND exam_id = %s
                 ORDER BY submitted_at DESC
             """, (student_id, exam_id))
-            submissions = c.fetchall()
+            submissions = cursor.fetchall()
             
             # Keep the first (latest) one, delete the rest
             keep_id = submissions[0][0]
@@ -765,64 +1002,107 @@ def cleanup_duplicate_submissions():
             
             # Delete submission_answers for the duplicate submissions
             for sub_id in delete_ids:
-                c.execute("DELETE FROM submission_answers WHERE submission_id = ?", (sub_id,))
+                conn.execute("DELETE FROM submission_answers WHERE submission_id = %s", (sub_id,))
             
             # Delete the duplicate submissions
             for sub_id in delete_ids:
-                c.execute("DELETE FROM submissions WHERE id = ?", (sub_id,))
+                conn.execute("DELETE FROM submissions WHERE id = %s", (sub_id,))
             
             app.logger.info(f"Removed {len(delete_ids)} duplicate submissions for student_id={student_id}, exam_id={exam_id}, keeping submission_id={keep_id}")
         
         conn.commit()
+        conn.close()
         app.logger.info(f"Duplicate cleanup completed: processed {len(duplicates)} duplicate sets")
         
     except Exception as e:
         conn.rollback()
+        conn.close()
         app.logger.error(f"Duplicate cleanup failed: {e}")
         raise
-    finally:
-        conn.close()
 
 def validate_schema(conn):
     """Validate database schema and log missing items without crashing."""
     try:
-        c = conn.cursor()
-        
         # Check required tables
-        c.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = [row[0] for row in c.fetchall()]
+        if DATABASE_URL:
+            # PostgreSQL
+            cursor = conn.execute("""
+                SELECT table_name FROM information_schema.tables 
+                WHERE table_schema = 'public'
+            """)
+            tables = [row['table_name'] for row in cursor.fetchall()]
+        else:
+            # SQLite - access underlying connection
+            c = conn.conn.cursor()
+            c.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = [row[0] for row in c.fetchall()]
+        
         required_tables = ['users', 'exams', 'questions', 'submissions', 'classrooms', 'classroom_members', 'activity_log']
         for table in required_tables:
             if table not in tables:
                 app.logger.warning(f"Schema validation: Required table '{table}' is missing")
         
         # Check required columns in exams table
-        c.execute("PRAGMA table_info(exams)")
-        exam_columns = [row[1] for row in c.fetchall()]
+        if DATABASE_URL:
+            cursor = conn.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'exams'
+            """)
+            exam_columns = [row['column_name'] for row in cursor.fetchall()]
+        else:
+            c = conn.conn.cursor()
+            c.execute("PRAGMA table_info(exams)")
+            exam_columns = [row[1] for row in c.fetchall()]
+        
         required_exam_columns = ['id', 'title', 'faculty_id', 'published', 'created_at']
         for col in required_exam_columns:
             if col not in exam_columns:
                 app.logger.warning(f"Schema validation: exams table missing required column '{col}'")
         
         # Check required columns in submissions table
-        c.execute("PRAGMA table_info(submissions)")
-        submission_columns = [row[1] for row in c.fetchall()]
+        if DATABASE_URL:
+            cursor = conn.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'submissions'
+            """)
+            submission_columns = [row['column_name'] for row in cursor.fetchall()]
+        else:
+            c = conn.conn.cursor()
+            c.execute("PRAGMA table_info(submissions)")
+            submission_columns = [row[1] for row in c.fetchall()]
+        
         required_submission_columns = ['id', 'student_id', 'exam_id', 'score']
         for col in required_submission_columns:
             if col not in submission_columns:
                 app.logger.warning(f"Schema validation: submissions table missing required column '{col}'")
         
         # Check required columns in classrooms table
-        c.execute("PRAGMA table_info(classrooms)")
-        classroom_columns = [row[1] for row in c.fetchall()]
+        if DATABASE_URL:
+            cursor = conn.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'classrooms'
+            """)
+            classroom_columns = [row['column_name'] for row in cursor.fetchall()]
+        else:
+            c = conn.conn.cursor()
+            c.execute("PRAGMA table_info(classrooms)")
+            classroom_columns = [row[1] for row in c.fetchall()]
         required_classroom_columns = ['id', 'name', 'faculty_id']
         for col in required_classroom_columns:
             if col not in classroom_columns:
                 app.logger.warning(f"Schema validation: classrooms table missing required column '{col}'")
         
         # Check required columns in classroom_members table
-        c.execute("PRAGMA table_info(classroom_members)")
-        member_columns = [row[1] for row in c.fetchall()]
+        if DATABASE_URL:
+            cursor = conn.execute("""
+                SELECT column_name FROM information_schema.columns 
+                WHERE table_name = 'classroom_members'
+            """)
+            member_columns = [row['column_name'] for row in cursor.fetchall()]
+        else:
+            c = conn.conn.cursor()
+            c.execute("PRAGMA table_info(classroom_members)")
+            member_columns = [row[1] for row in c.fetchall()]
         required_member_columns = ['id', 'classroom_id', 'student_id']
         for col in required_member_columns:
             if col not in member_columns:
@@ -840,6 +1120,7 @@ migrate_db()
 # Validate schema at startup
 conn = get_db()
 validate_schema(conn)
+conn.close()
 
 # ═══════════════════════════════════════════════════════════════════════════
 # AUTH
@@ -851,10 +1132,16 @@ def home(): return render_template("auth/login.html")
 def login():
     email = request.form["email"]; password = request.form["password"]; role = request.form["role"]
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE email=? AND role=?", (email,role)).fetchone()
-    if not user: return render_template("auth/login.html", error="Invalid email or role")
-    if not check_password_hash(user["password"], password): return render_template("auth/login.html", error="Incorrect password")
-    if user["approved"] == 0: return render_template("auth/login.html", error="Account pending admin approval")
+    user = conn.execute("SELECT * FROM users WHERE email=%s AND role=%s", (email,role)).fetchone()
+    if not user: 
+        conn.close()
+        return render_template("auth/login.html", error="Invalid email or role")
+    if not check_password_hash(user["password"], password): 
+        conn.close()
+        return render_template("auth/login.html", error="Incorrect password")
+    if user["approved"] == 0: 
+        conn.close()
+        return render_template("auth/login.html", error="Account pending admin approval")
     session["user_id"] = user["id"]
     session["role"] = user["role"]
     session["name"] = user["name"]
@@ -868,17 +1155,16 @@ def login():
     session["theme_preference"] = db_theme or "light"
     # Update last_login if column exists
     if "last_login" in user.keys():
-        conn.execute("UPDATE users SET last_login=CURRENT_TIMESTAMP WHERE id=?", (user["id"],))
-        conn.commit()
+        conn.execute("UPDATE users SET last_login=CURRENT_TIMESTAMP WHERE id=%s", (user["id"],))
     log_activity(user["id"], "Logged in")
     browser_theme = request.cookies.get("es_theme")
     if browser_theme in ("light", "dark"):
         final_theme = browser_theme
-        conn.execute("UPDATE users SET theme_preference=? WHERE id=?", (final_theme, user["id"]))
-        conn.commit()
-        session["theme_preference"] = final_theme
+        conn.execute("UPDATE users SET theme_preference=%s WHERE id=%s", (final_theme, user["id"]))
     else:
         final_theme = session["theme_preference"]
+    conn.commit()
+    conn.close()
     dest = "/complete_profile" if (role in ("student", "faculty") and "profile_completed" in user.keys() and not user["profile_completed"]) else {"admin":"/admin","faculty":"/faculty"}.get(role,"/student")
     resp = redirect(dest)
     resp.set_cookie("es_theme", final_theme, max_age=60*60*24*365, samesite="Lax", httponly=False)
@@ -898,10 +1184,12 @@ def signup():
         approved = 1 if role == "student" else 0
         conn = get_db()
         try:
-            conn.execute("INSERT INTO users(name,email,password,role,approved) VALUES(?,?,?,?,?)",
-                         (name,email,password,role,approved))
+            conn.execute("INSERT INTO users(name,email,password,role,approved) VALUES(%s,%s,%s,%s,%s)", (name,email,password,role,approved))
             conn.commit()
-        except: return render_template("auth/signup.html", error="Email already registered")
+            conn.close()
+        except: 
+            conn.close()
+            return render_template("auth/signup.html", error="Email already registered")
         flash("Account created! Please log in.", "success")
         return redirect("/")
     return render_template("auth/signup.html")
@@ -920,9 +1208,10 @@ def toggle_theme():
         return jsonify({"success": False, "error": "Invalid theme"}), 400
     if "user_id" in session:
         conn = get_db()
-        conn.execute("UPDATE users SET theme_preference=? WHERE id=?", (new_theme, session["user_id"]))
+        conn.execute("UPDATE users SET theme_preference=%s WHERE id=%s", (new_theme, session["user_id"]))
         conn.commit()
         session["theme_preference"] = new_theme
+        conn.close()
     resp = jsonify({"success": True, "theme": new_theme})
     resp.set_cookie("es_theme", new_theme, max_age=60*60*24*365, samesite="Lax", httponly=False)
     return resp
@@ -939,16 +1228,17 @@ def faculty_archive():
     fid = session["user_id"]
     archived_classrooms = conn.execute("""
         SELECT * FROM classrooms
-        WHERE faculty_id=? AND is_archived=1
+        WHERE faculty_id=%s AND is_archived=1
         ORDER BY archived_at DESC
     """, (fid,)).fetchall()
     archived_exams = conn.execute("""
         SELECT e.*, c.name as classroom_name
         FROM exams e
         LEFT JOIN classrooms c ON c.id = e.classroom_id
-        WHERE e.faculty_id=? AND e.is_archived=1
+        WHERE e.faculty_id=%s AND e.is_archived=1
         ORDER BY e.archived_at DESC
     """, (fid,)).fetchall()
+    conn.close()
     return render_template("faculty/faculty_archive.html",
                            archived_classrooms=archived_classrooms,
                            archived_exams=archived_exams)
@@ -960,18 +1250,20 @@ def restore_classroom(cid):
     if g: return g
     conn = get_db()
     classroom = conn.execute(
-        "SELECT * FROM classrooms WHERE id=? AND faculty_id=? AND is_archived=1",
+        "SELECT * FROM classrooms WHERE id=%s AND faculty_id=%s AND is_archived=1",
         (cid, session["user_id"])
     ).fetchone()
     if not classroom:
+        conn.close()
         flash("Archived classroom not found.", "danger")
         return redirect("/faculty/archive")
     # Restore classroom and its exams
     conn.execute("""UPDATE classrooms SET is_archived=0, archived_at=NULL, archived_by=NULL
-                    WHERE id=? AND faculty_id=?""", (cid, session["user_id"]))
+                    WHERE id=%s AND faculty_id=%s""", (cid, session["user_id"]))
     conn.execute("""UPDATE exams SET is_archived=0, archived_at=NULL, archived_by=NULL
-                    WHERE classroom_id=? AND faculty_id=?""", (cid, session["user_id"]))
+                    WHERE classroom_id=%s AND faculty_id=%s""", (cid, session["user_id"]))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Restored classroom: {classroom['name']}")
     flash(f"Classroom \"{classroom['name']}\" has been restored.", "success")
     return redirect("/faculty/archive")
@@ -983,15 +1275,17 @@ def restore_exam(eid):
     if g: return g
     conn = get_db()
     exam = conn.execute(
-        "SELECT * FROM exams WHERE id=? AND faculty_id=? AND is_archived=1",
+        "SELECT * FROM exams WHERE id=%s AND faculty_id=%s AND is_archived=1",
         (eid, session["user_id"])
     ).fetchone()
     if not exam:
+        conn.close()
         flash("Archived exam not found.", "danger")
         return redirect("/faculty/archive")
     conn.execute("""UPDATE exams SET is_archived=0, archived_at=NULL, archived_by=NULL
-                    WHERE id=? AND faculty_id=?""", (eid, session["user_id"]))
+                    WHERE id=%s AND faculty_id=%s""", (eid, session["user_id"]))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Restored exam: {exam['title']}")
     flash(f"Exam \"{exam['title']}\" has been restored.", "success")
     return redirect("/faculty/archive")
@@ -1003,26 +1297,28 @@ def permanently_delete_classroom(cid):
     if g: return g
     conn = get_db()
     classroom = conn.execute(
-        "SELECT * FROM classrooms WHERE id=? AND faculty_id=? AND is_archived=1",
+        "SELECT * FROM classrooms WHERE id=%s AND faculty_id=%s AND is_archived=1",
         (cid, session["user_id"])
     ).fetchone()
     if not classroom:
+        conn.close()
         flash("Archived classroom not found.", "danger")
         return redirect("/faculty/archive")
     # Permanently delete classroom and related data
     exam_ids = [r[0] for r in conn.execute(
-        "SELECT id FROM exams WHERE classroom_id=? AND faculty_id=?",
+        "SELECT id FROM exams WHERE classroom_id=%s AND faculty_id=%s",
         (cid, session["user_id"])
     ).fetchall()]
     for eid in exam_ids:
-        conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE exam_id=?)", (eid,))
-        conn.execute("DELETE FROM submissions WHERE exam_id=?", (eid,))
-        conn.execute("DELETE FROM exam_attempts WHERE exam_id=?", (eid,))
-        conn.execute("DELETE FROM questions WHERE exam_id=?", (eid,))
-        conn.execute("DELETE FROM exams WHERE id=?", (eid,))
-    conn.execute("DELETE FROM classroom_members WHERE classroom_id=?", (cid,))
-    conn.execute("DELETE FROM classrooms WHERE id=? AND faculty_id=?", (cid, session["user_id"]))
+        conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE exam_id=%s)", (eid,))
+        conn.execute("DELETE FROM submissions WHERE exam_id=%s", (eid,))
+        conn.execute("DELETE FROM exam_attempts WHERE exam_id=%s", (eid,))
+        conn.execute("DELETE FROM questions WHERE exam_id=%s", (eid,))
+        conn.execute("DELETE FROM exams WHERE id=%s", (eid,))
+    conn.execute("DELETE FROM classroom_members WHERE classroom_id=%s", (cid,))
+    conn.execute("DELETE FROM classrooms WHERE id=%s AND faculty_id=%s", (cid, session["user_id"]))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Permanently deleted classroom: {classroom['name']}")
     flash(f"Classroom \"{classroom['name']}\" permanently deleted.", "success")
     return redirect("/faculty/archive")
@@ -1034,18 +1330,20 @@ def permanently_delete_exam(eid):
     if g: return g
     conn = get_db()
     exam = conn.execute(
-        "SELECT * FROM exams WHERE id=? AND faculty_id=? AND is_archived=1",
+        "SELECT * FROM exams WHERE id=%s AND faculty_id=%s AND is_archived=1",
         (eid, session["user_id"])
     ).fetchone()
     if not exam:
+        conn.close()
         flash("Archived exam not found.", "danger")
         return redirect("/faculty/archive")
-    conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE exam_id=?)", (eid,))
-    conn.execute("DELETE FROM submissions WHERE exam_id=?", (eid,))
-    conn.execute("DELETE FROM exam_attempts WHERE exam_id=?", (eid,))
-    conn.execute("DELETE FROM questions WHERE exam_id=?", (eid,))
-    conn.execute("DELETE FROM exams WHERE id=? AND faculty_id=?", (eid, session["user_id"]))
+    conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE exam_id=%s)", (eid,))
+    conn.execute("DELETE FROM submissions WHERE exam_id=%s", (eid,))
+    conn.execute("DELETE FROM exam_attempts WHERE exam_id=%s", (eid,))
+    conn.execute("DELETE FROM questions WHERE exam_id=%s", (eid,))
+    conn.execute("DELETE FROM exams WHERE id=%s AND faculty_id=%s", (eid, session["user_id"]))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Permanently deleted exam: {exam['title']}")
     flash(f"Exam \"{exam['title']}\" permanently deleted.", "success")
     return redirect("/faculty/archive")
@@ -1057,8 +1355,9 @@ def complete_profile():
         return redirect("/")
     # If already complete, send to dashboard
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     if user and user["profile_completed"]:
+        conn.close()
         return redirect("/faculty" if session["role"] == "faculty" else "/student")
 
     if request.method == "POST":
@@ -1079,10 +1378,11 @@ def complete_profile():
             if not program:    errors.append("Program / Course is required.")
             if not section:    errors.append("Section / Batch is required.")
             if errors:
+                conn.close()
                 return render_template("auth/complete_profile.html", user=dict(user), errors=errors)
-            conn.execute("""UPDATE users SET name=?, phone=?, date_of_birth=?, gender=?,
-                            reg_number=?, program=?, section=?, profile_completed=1,
-                            last_profile_update=? WHERE id=?""",
+            conn.execute("""UPDATE users SET name=%s, phone=%s, date_of_birth=%s, gender=%s,
+                            reg_number=%s, program=%s, section=%s, profile_completed=1,
+                            last_profile_update=%s WHERE id=%s""",
                          (name, phone, date_of_birth, gender, reg_number, program, section,
                           datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session["user_id"]))
         else:  # faculty
@@ -1093,19 +1393,22 @@ def complete_profile():
             if not designation:      errors.append("Designation is required.")
             if not subject:          errors.append("Subject is required.")
             if errors:
+                conn.close()
                 return render_template("auth/complete_profile.html", user=dict(user), errors=errors)
-            conn.execute("""UPDATE users SET name=?, phone=?, date_of_birth=?, gender=?,
-                            faculty_id=?, designation=?, subject=?, profile_completed=1,
-                            last_profile_update=? WHERE id=?""",
+            conn.execute("""UPDATE users SET name=%s, phone=%s, date_of_birth=%s, gender=%s,
+                            faculty_id=%s, designation=%s, subject=%s, profile_completed=1,
+                            last_profile_update=%s WHERE id=%s""",
                          (name, phone, date_of_birth, gender, faculty_id_field, designation,
                           subject, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session["user_id"]))
 
         conn.commit()
+        conn.close()
         session["name"] = name
         log_activity(session["user_id"], "Completed profile setup")
         flash("Profile completed! Welcome to EduSphere.", "success")
         return redirect("/faculty" if session["role"] == "faculty" else "/student")
 
+    conn.close()
     return render_template("auth/complete_profile.html", user=dict(user), errors=[])
 
 
@@ -1217,6 +1520,7 @@ def admin():
         SELECT activity_log.action, activity_log.timestamp, users.name, users.role
         FROM activity_log JOIN users ON users.id=activity_log.user_id
         ORDER BY activity_log.timestamp DESC LIMIT 8""").fetchall()
+    conn.close()
     return render_template("admin/admin_dashboard.html",
         students=students, faculty=faculty, active_faculty=active_faculty, pending_faculty=pending_faculty,
         exams=exams, total_classrooms=total_classrooms, active_exams=active_exams,
@@ -1238,14 +1542,15 @@ def admin_activity():
                FROM activity_log JOIN users ON users.id=activity_log.user_id"""
     filters, params = [], []
     if search_query:
-        filters.append("(users.name LIKE ? OR users.email LIKE ?)")
+        filters.append("(users.name LIKE %s OR users.email LIKE %s)")
         params.extend([f"%{search_query}%", f"%{search_query}%"])
-    if role_filter: filters.append("users.role=?"); params.append(role_filter)
-    if from_date: filters.append("DATE(activity_log.timestamp) >= ?"); params.append(from_date)
-    if to_date: filters.append("DATE(activity_log.timestamp) <= ?"); params.append(to_date)
+    if role_filter: filters.append("users.role=%s"); params.append(role_filter)
+    if from_date: filters.append("DATE(activity_log.timestamp) >= %s"); params.append(from_date)
+    if to_date: filters.append("DATE(activity_log.timestamp) <= %s"); params.append(to_date)
     if filters: query += " WHERE " + " AND ".join(filters)
     query += " ORDER BY activity_log.timestamp DESC LIMIT 200"
     logs = conn.execute(query, params).fetchall()
+    conn.close()
     return render_template("admin/admin_activity.html", logs=logs,
                            search_query=search_query, sel_role=role_filter,
                            from_date=from_date, to_date=to_date)
@@ -1264,14 +1569,15 @@ def admin_activity_export_csv():
                FROM activity_log JOIN users ON users.id=activity_log.user_id"""
     filters, params = [], []
     if search_query:
-        filters.append("(users.name LIKE ? OR users.email LIKE ?)")
+        filters.append("(users.name LIKE %s OR users.email LIKE %s)")
         params.extend([f"%{search_query}%", f"%{search_query}%"])
-    if role_filter: filters.append("users.role=?"); params.append(role_filter)
-    if from_date: filters.append("DATE(activity_log.timestamp) >= ?"); params.append(from_date)
-    if to_date: filters.append("DATE(activity_log.timestamp) <= ?"); params.append(to_date)
+    if role_filter: filters.append("users.role=%s"); params.append(role_filter)
+    if from_date: filters.append("DATE(activity_log.timestamp) >= %s"); params.append(from_date)
+    if to_date: filters.append("DATE(activity_log.timestamp) <= %s"); params.append(to_date)
     if filters: query += " WHERE " + " AND ".join(filters)
     query += " ORDER BY activity_log.timestamp DESC LIMIT 200"
     logs = conn.execute(query, params).fetchall()
+    conn.close()
     
     out = io.StringIO(); w = csv.writer(out)
     w.writerow([f"# Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
@@ -1306,14 +1612,15 @@ def admin_activity_export_pdf():
                    FROM activity_log JOIN users ON users.id=activity_log.user_id"""
         filters, params = [], []
         if search_query:
-            filters.append("(users.name LIKE ? OR users.email LIKE ?)")
+            filters.append("(users.name LIKE %s OR users.email LIKE %s)")
             params.extend([f"%{search_query}%", f"%{search_query}%"])
-        if role_filter: filters.append("users.role=?"); params.append(role_filter)
-        if from_date: filters.append("DATE(activity_log.timestamp) >= ?"); params.append(from_date)
-        if to_date: filters.append("DATE(activity_log.timestamp) <= ?"); params.append(to_date)
+        if role_filter: filters.append("users.role=%s"); params.append(role_filter)
+        if from_date: filters.append("DATE(activity_log.timestamp) >= %s"); params.append(from_date)
+        if to_date: filters.append("DATE(activity_log.timestamp) <= %s"); params.append(to_date)
         if filters: query += " WHERE " + " AND ".join(filters)
         query += " ORDER BY activity_log.timestamp DESC LIMIT 200"
         logs = conn.execute(query, params).fetchall()
+        conn.close()
         
         # Create PDF with reportlab
         response = io.BytesIO()
@@ -1487,8 +1794,8 @@ def admin_users():
     sort     = request.args.get("sort","newest")
     query    = "SELECT * FROM users WHERE 1=1"
     params   = []
-    if q:      query += " AND (name LIKE ? OR email LIKE ?)"; params += [f"%{q}%",f"%{q}%"]
-    if role_f: query += " AND role=?"; params.append(role_f)
+    if q:      query += " AND (name LIKE %s OR email LIKE %s)"; params += [f"%{q}%",f"%{q}%"]
+    if role_f: query += " AND role=%s"; params.append(role_f)
     if status_f == "active":  query += " AND approved=1"
     if status_f == "pending": query += " AND approved=0"
     
@@ -1511,6 +1818,7 @@ def admin_users():
     query += f" ORDER BY {order_by}"
     
     users = conn.execute(query, params).fetchall()
+    conn.close()
     return render_template("admin/admin_users.html", users=users, q=q, role_f=role_f, status_f=status_f, sort=sort)
 
 @app.route("/admin/users/export")
@@ -1525,12 +1833,13 @@ def admin_users_export_csv():
     sort     = request.args.get("sort","newest")
     query    = "SELECT * FROM users WHERE 1=1"
     params   = []
-    if q:      query += " AND (name LIKE ? OR email LIKE ?)"; params += [f"%{q}%",f"%{q}%"]
-    if role_f: query += " AND role=?"; params.append(role_f)
+    if q:      query += " AND (name LIKE %s OR email LIKE %s)"; params += [f"%{q}%",f"%{q}%"]
+    if role_f: query += " AND role=%s"; params.append(role_f)
     if status_f == "active":  query += " AND approved=1"
     if status_f == "pending": query += " AND approved=0"
     query += " ORDER BY " + ("created_at ASC" if sort=="oldest" else "created_at DESC")
     users = conn.execute(query, params).fetchall()
+    conn.close()
     
     out = io.StringIO(); w = csv.writer(out)
     w.writerow([f"# Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
@@ -1563,12 +1872,13 @@ def admin_users_export_pdf():
         sort     = request.args.get("sort","newest")
         query    = "SELECT * FROM users WHERE 1=1"
         params   = []
-        if q:      query += " AND (name LIKE ? OR email LIKE ?)"; params += [f"%{q}%",f"%{q}%"]
-        if role_f: query += " AND role=?"; params.append(role_f)
+        if q:      query += " AND (name LIKE %s OR email LIKE %s)"; params += [f"%{q}%",f"%{q}%"]
+        if role_f: query += " AND role=%s"; params.append(role_f)
         if status_f == "active":  query += " AND approved=1"
         if status_f == "pending": query += " AND approved=0"
         query += " ORDER BY " + ("created_at ASC" if sort=="oldest" else "created_at DESC")
         users = conn.execute(query, params).fetchall()
+        conn.close()
         
         # Create PDF with reportlab
         response = io.BytesIO()
@@ -1739,7 +2049,8 @@ def approve(id):
     g = require_role("admin"); 
     if g: return g
     conn = get_db()
-    conn.execute("UPDATE users SET approved=1 WHERE id=?", (id,)); conn.commit()
+    conn.execute("UPDATE users SET approved=1 WHERE id=%s", (id,)); conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Approved faculty id={id}")
     flash("Faculty approved.", "success"); return redirect("/admin")
 
@@ -1752,12 +2063,14 @@ def add_user():
         password=generate_password_hash(request.form["password"]); role=request.form["role"]
         conn = get_db()
         try:
-            conn.execute("INSERT INTO users(name,email,password,role,approved) VALUES(?,?,?,?,1)",
-                         (name,email,password,role))
+            conn.execute("INSERT INTO users(name,email,password,role,approved) VALUES(%s,%s,%s,%s,1)", (name,email,password,role))
             conn.commit()
+            conn.close()
             log_activity(session["user_id"], f"Added user {email}")
             flash("User created.", "success")
-        except: flash("Email already registered.", "danger")
+        except: 
+            conn.close()
+            flash("Email already registered.", "danger")
         return redirect("/admin/users")
     return render_template("admin/add_user.html")
 
@@ -1766,8 +2079,9 @@ def view_user(id):
     g = require_role("admin")
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (id,)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (id,)).fetchone()
     if not user:
+        conn.close()
         flash("User not found.", "danger")
         return redirect("/admin/users")
     
@@ -1781,7 +2095,7 @@ def view_user(id):
             SELECT classrooms.*, classroom_members.joined_at
             FROM classroom_members
             JOIN classrooms ON classrooms.id=classroom_members.classroom_id
-            WHERE classroom_members.student_id=?
+            WHERE classroom_members.student_id=%s
             ORDER BY classrooms.name
         """, (id,)).fetchall()
         
@@ -1790,18 +2104,18 @@ def view_user(id):
                    (SELECT SUM(q.marks) FROM questions q WHERE q.exam_id = exams.id) as total
             FROM submissions
             JOIN exams ON exams.id=submissions.exam_id
-            WHERE submissions.student_id=?
+            WHERE submissions.student_id=%s
             ORDER BY submissions.submitted_at DESC
         """, (id,)).fetchall()
     
     elif user["role"] == "faculty":
         classrooms = conn.execute("""
-            SELECT * FROM classrooms WHERE faculty_id=?
+            SELECT * FROM classrooms WHERE faculty_id=%s
             ORDER BY name
         """, (id,)).fetchall()
         
         exams_created = conn.execute("""
-            SELECT * FROM exams WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0)
+            SELECT * FROM exams WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)
             ORDER BY created_at DESC
         """, (id,)).fetchall()
         
@@ -1809,9 +2123,10 @@ def view_user(id):
     
     # Get activity history
     activity_history = conn.execute("""
-        SELECT * FROM activity_log WHERE user_id=?
+        SELECT * FROM activity_log WHERE user_id=%s
         ORDER BY timestamp DESC LIMIT 50
     """, (id,)).fetchall()
+    conn.close()
     
     if user:
         user = dict(user)
@@ -1823,8 +2138,9 @@ def edit_user(id):
     g = require_role("admin"); 
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (id,)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (id,)).fetchone()
     if not user:
+        conn.close()
         flash("User not found.", "danger")
         return redirect("/admin/users")
     
@@ -1833,16 +2149,16 @@ def edit_user(id):
     if request.method == "POST":
         if is_own_profile:
             # Admin can edit their own name and email
-            conn.execute("UPDATE users SET name=?,email=?,role=? WHERE id=?",
-                         (request.form["name"],request.form["email"],request.form["role"],id))
+            conn.execute("UPDATE users SET name=%s,email=%s,role=%s WHERE id=%s", (request.form["name"],request.form["email"],request.form["role"],id))
         else:
             # Admin cannot edit name/email for other users, only role
-            conn.execute("UPDATE users SET role=? WHERE id=?",
-                         (request.form["role"],id))
+            conn.execute("UPDATE users SET role=%s WHERE id=%s", (request.form["role"],id))
         conn.commit()
+        conn.close()
         log_activity(session["user_id"], f"Updated user: {user['email']}")
         flash("User updated.", "success"); return redirect("/admin/users")
     
+    conn.close()
     if user:
         user = dict(user)
     return render_template("admin/edit_user.html", user=user, is_own_profile=is_own_profile)
@@ -1852,26 +2168,27 @@ def delete_user(id):
     g = require_role("admin"); 
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (id,)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (id,)).fetchone()
     # Cascade delete associated records
-    conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE student_id=?)", (id,))
-    conn.execute("DELETE FROM submissions WHERE student_id=?", (id,))
-    conn.execute("DELETE FROM exam_attempts WHERE student_id=?", (id,))
-    conn.execute("DELETE FROM classroom_members WHERE student_id=?", (id,))
-    conn.execute("DELETE FROM activity_log WHERE user_id=?", (id,))
+    conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE student_id=%s)", (id,))
+    conn.execute("DELETE FROM submissions WHERE student_id=%s", (id,))
+    conn.execute("DELETE FROM exam_attempts WHERE student_id=%s", (id,))
+    conn.execute("DELETE FROM classroom_members WHERE student_id=%s", (id,))
+    conn.execute("DELETE FROM activity_log WHERE user_id=%s", (id,))
     # If deleting a faculty, also delete their exams, questions, and classrooms
     if user["role"] == "faculty":
-        conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=?))", (id,))
-        conn.execute("DELETE FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=?)", (id,))
-        conn.execute("DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=?)", (id,))
-        conn.execute("DELETE FROM questions WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=?)", (id,))
-        conn.execute("DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=?)", (id,))
-        conn.execute("DELETE FROM classroom_members WHERE classroom_id IN (SELECT id FROM classrooms WHERE faculty_id=?)", (id,))
-        conn.execute("DELETE FROM classrooms WHERE faculty_id=?", (id,))
-        conn.execute("DELETE FROM exams WHERE faculty_id=?", (id,))
-        conn.execute("DELETE FROM question_bank WHERE faculty_id=?", (id,))
-    conn.execute("DELETE FROM users WHERE id=?", (id,))
+        conn.execute("DELETE FROM submission_answers WHERE submission_id IN (SELECT id FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=%s))", (id,))
+        conn.execute("DELETE FROM submissions WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=%s)", (id,))
+        conn.execute("DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=%s)", (id,))
+        conn.execute("DELETE FROM questions WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=%s)", (id,))
+        conn.execute("DELETE FROM exam_attempts WHERE exam_id IN (SELECT id FROM exams WHERE faculty_id=%s)", (id,))
+        conn.execute("DELETE FROM classroom_members WHERE classroom_id IN (SELECT id FROM classrooms WHERE faculty_id=%s)", (id,))
+        conn.execute("DELETE FROM classrooms WHERE faculty_id=%s", (id,))
+        conn.execute("DELETE FROM exams WHERE faculty_id=%s", (id,))
+        conn.execute("DELETE FROM question_bank WHERE faculty_id=%s", (id,))
+    conn.execute("DELETE FROM users WHERE id=%s", (id,))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Deleted user: {user['name']} ({user['email']})")
     flash("User deleted.", "success")
     return redirect("/admin/users")
@@ -1897,12 +2214,12 @@ def reports():
                JOIN users AS faculty ON faculty.id=exams.faculty_id
                JOIN questions ON questions.exam_id=exams.id"""
     filters, params = [], []
-    if sf:  filters.append("users.id=?");          params.append(sf)
-    if ef:  filters.append("exams.id=?");          params.append(ef)
-    if ff:  filters.append("exams.faculty_id=?");  params.append(ff)
-    if df:  filters.append("exams.exam_date>=?");  params.append(df)
-    if dt:  filters.append("exams.exam_date<=?");  params.append(dt)
-    if sq:  filters.append("(users.name LIKE ? OR exams.title LIKE ?)"); params += [f"%{sq}%",f"%{sq}%"]
+    if sf:  filters.append("users.id=%s");          params.append(sf)
+    if ef:  filters.append("exams.id=%s");          params.append(ef)
+    if ff:  filters.append("exams.faculty_id=%s");  params.append(ff)
+    if df:  filters.append("exams.exam_date>=%s");  params.append(df)
+    if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
+    if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
     query += " GROUP BY users.id, exams.id ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
@@ -1945,6 +2262,7 @@ def reports():
     students  = conn.execute("SELECT * FROM users WHERE role='student' ORDER BY name").fetchall()
     all_exams = conn.execute("SELECT * FROM exams ORDER BY title").fetchall()
     all_fac   = conn.execute("SELECT * FROM users WHERE role='faculty' ORDER BY name").fetchall()
+    conn.close()
     return render_template("admin/reports.html", data=data, students=students, exams=all_exams,
         faculty_list=all_fac, faculty_stats=faculty_stats,
         top_students=top_students, low_students=low_students,
@@ -1972,15 +2290,16 @@ def export_csv():
         JOIN users AS faculty ON faculty.id=exams.faculty_id
         JOIN questions ON questions.exam_id=exams.id"""
     filters, params = [], []
-    if sf:  filters.append("users.id=?");          params.append(sf)
-    if ef:  filters.append("exams.id=?");          params.append(ef)
-    if ff:  filters.append("exams.faculty_id=?");  params.append(ff)
-    if df:  filters.append("exams.exam_date>=?");  params.append(df)
-    if dt:  filters.append("exams.exam_date<=?");  params.append(dt)
-    if sq:  filters.append("(users.name LIKE ? OR exams.title LIKE ?)"); params += [f"%{sq}%",f"%{sq}%"]
+    if sf:  filters.append("users.id=%s");          params.append(sf)
+    if ef:  filters.append("exams.id=%s");          params.append(ef)
+    if ff:  filters.append("exams.faculty_id=%s");  params.append(ff)
+    if df:  filters.append("exams.exam_date>=%s");  params.append(df)
+    if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
+    if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
     query += " GROUP BY users.id, exams.id ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
+    conn.close()
     
     out = io.StringIO(); w = csv.writer(out)
     w.writerow([f"# Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
@@ -2037,15 +2356,16 @@ def export_pdf():
             JOIN users AS faculty ON faculty.id=exams.faculty_id
             JOIN questions ON questions.exam_id=exams.id"""
         filters, params = [], []
-        if sf:  filters.append("users.id=?");          params.append(sf)
-        if ef:  filters.append("exams.id=?");          params.append(ef)
-        if ff:  filters.append("exams.faculty_id=?");  params.append(ff)
-        if df:  filters.append("exams.exam_date>=?");  params.append(df)
-        if dt:  filters.append("exams.exam_date<=?");  params.append(dt)
-        if sq:  filters.append("(users.name LIKE ? OR exams.title LIKE ?)"); params += [f"%{sq}%",f"%{sq}%"]
+        if sf:  filters.append("users.id=%s");          params.append(sf)
+        if ef:  filters.append("exams.id=%s");          params.append(ef)
+        if ff:  filters.append("exams.faculty_id=%s");  params.append(ff)
+        if df:  filters.append("exams.exam_date>=%s");  params.append(df)
+        if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
+        if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
         if filters: query += " WHERE " + " AND ".join(filters)
         query += " GROUP BY users.id, exams.id ORDER BY submissions.submitted_at DESC"
         data = conn.execute(query, params).fetchall()
+        conn.close()
         
         # Calculate summary stats
         total_count = len(data)
@@ -2249,6 +2569,7 @@ def export_faculty_csv():
         FROM users AS faculty LEFT JOIN exams ON exams.faculty_id=faculty.id
         LEFT JOIN submissions ON submissions.exam_id=exams.id
         WHERE faculty.role='faculty' GROUP BY faculty.id""").fetchall()
+    conn.close()
     out = io.StringIO(); w = csv.writer(out)
     w.writerow(["Faculty","Exams Conducted","Total Attempts"])
     for r in rows: w.writerow([r["name"],r["exams"],r["attempts"]])
@@ -2268,8 +2589,9 @@ def classrooms():
     rooms = conn.execute("""
         SELECT classrooms.*, COUNT(classroom_members.id) as member_count
         FROM classrooms LEFT JOIN classroom_members ON classrooms.id=classroom_members.classroom_id
-        WHERE classrooms.faculty_id=? GROUP BY classrooms.id ORDER BY classrooms.created_at DESC
+        WHERE classrooms.faculty_id=%s GROUP BY classrooms.id ORDER BY classrooms.created_at DESC
     """, (session["user_id"],)).fetchall()
+    conn.close()
     return render_template("faculty/classrooms.html", rooms=rooms)
 
 @app.route("/classrooms/create", methods=["GET","POST"])
@@ -2282,11 +2604,11 @@ def create_classroom():
         code    = gen_code()
         conn = get_db()
         # ensure unique code
-        while conn.execute("SELECT id FROM classrooms WHERE code=?", (code,)).fetchone():
+        while conn.execute("SELECT id FROM classrooms WHERE code=%s", (code,)).fetchone():
             code = gen_code()
-        conn.execute("INSERT INTO classrooms(name,subject,code,faculty_id) VALUES(?,?,?,?)",
-                     (name,subject,code,session["user_id"]))
+        conn.execute("INSERT INTO classrooms(name,subject,code,faculty_id) VALUES(%s,%s,%s,%s)", (name,subject,code,session["user_id"]))
         conn.commit()
+        conn.close()
         log_activity(session["user_id"], f"Created classroom: {name}")
         flash(f"Classroom created! Code: {code}", "success")
         return redirect("/classrooms")
@@ -2297,32 +2619,34 @@ def classroom_detail(cid):
     g = require_role("faculty"); 
     if g: return g
     conn = get_db()
-    room = conn.execute("SELECT * FROM classrooms WHERE id=? AND faculty_id=?",
-                        (cid, session["user_id"])).fetchone()
-    if not room: return redirect("/classrooms")
+    room = conn.execute("SELECT * FROM classrooms WHERE id=%s AND faculty_id=%s", (cid, session["user_id"])).fetchone()
+    if not room:
+        conn.close()
+        return redirect("/classrooms")
     members = conn.execute("""
         SELECT users.*, classroom_members.joined_at FROM users
         JOIN classroom_members ON users.id=classroom_members.student_id
-        WHERE classroom_members.classroom_id=? ORDER BY users.name
+        WHERE classroom_members.classroom_id=%s ORDER BY users.name
     """, (cid,)).fetchall()
     exams = conn.execute("""
         SELECT exams.*, COUNT(questions.id) as q_count
         FROM exams LEFT JOIN questions ON exams.id=questions.exam_id
-        WHERE exams.classroom_id=? AND exams.faculty_id=?
+        WHERE exams.classroom_id=%s AND exams.faculty_id=%s
         GROUP BY exams.id ORDER BY exams.id DESC
     """, (cid, session["user_id"])).fetchall()
     # All other classrooms (for move exam dropdown)
     other_classrooms = conn.execute(
-        "SELECT * FROM classrooms WHERE faculty_id=? AND id!=? ORDER BY name",
+        "SELECT * FROM classrooms WHERE faculty_id=%s AND id!=%s ORDER BY name",
         (session["user_id"], cid)
     ).fetchall()
     # Exams not yet assigned to ANY classroom (can be added to this one)
     unassigned_exams = conn.execute("""
         SELECT exams.id, exams.title, exams.subject
         FROM exams
-        WHERE exams.faculty_id=? AND (exams.classroom_id IS NULL OR exams.classroom_id = 0)
+        WHERE exams.faculty_id=%s AND (exams.classroom_id IS NULL OR exams.classroom_id = 0)
         ORDER BY exams.title
     """, (session["user_id"],)).fetchall()
+    conn.close()
     return render_template("student/classroom_detail.html", room=room, members=members,
                            exams=exams, other_classrooms=other_classrooms,
                            unassigned_exams=unassigned_exams)
@@ -2332,8 +2656,9 @@ def remove_from_classroom(cid, sid):
     g = require_role("faculty"); 
     if g: return g
     conn = get_db()
-    conn.execute("DELETE FROM classroom_members WHERE classroom_id=? AND student_id=?", (cid,sid))
+    conn.execute("DELETE FROM classroom_members WHERE classroom_id=%s AND student_id=%s", (cid,sid))
     conn.commit()
+    conn.close()
     flash("Student removed from classroom.", "success")
     return redirect(f"/classrooms/{cid}")
 
@@ -2342,19 +2667,20 @@ def delete_classroom(cid):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    classroom = conn.execute("SELECT * FROM classrooms WHERE id=? AND faculty_id=?",
-                             (cid, session["user_id"])).fetchone()
+    classroom = conn.execute("SELECT * FROM classrooms WHERE id=%s AND faculty_id=%s", (cid, session["user_id"])).fetchone()
     if not classroom:
+        conn.close()
         flash("Classroom not found.", "danger")
         return redirect("/classrooms")
     # Archive classroom and its exams instead of permanently deleting
     conn.execute("""UPDATE classrooms SET is_archived=1, archived_at=CURRENT_TIMESTAMP,
-                    archived_by=? WHERE id=? AND faculty_id=?""",
+                    archived_by=%s WHERE id=%s AND faculty_id=%s""",
                  (session["user_id"], cid, session["user_id"]))
     conn.execute("""UPDATE exams SET is_archived=1, archived_at=CURRENT_TIMESTAMP,
-                    archived_by=? WHERE classroom_id=? AND faculty_id=?""",
+                    archived_by=%s WHERE classroom_id=%s AND faculty_id=%s""",
                  (session["user_id"], cid, session["user_id"]))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Archived classroom: {classroom['name']}")
     flash(f"Classroom \"{classroom['name']}\" has been archived. You can restore it from the Archive Center.", "success")
     return redirect("/classrooms")
@@ -2365,9 +2691,9 @@ def assign_exam_to_classroom(cid):
     if g: return g
     exam_id = request.form["exam_id"]
     conn = get_db()
-    conn.execute("UPDATE exams SET classroom_id=? WHERE id=? AND faculty_id=?",
-                 (cid, exam_id, session["user_id"]))
+    conn.execute("UPDATE exams SET classroom_id=%s WHERE id=%s AND faculty_id=%s", (cid, exam_id, session["user_id"]))
     conn.commit()
+    conn.close()
     flash("Exam linked to classroom.", "success")
     return redirect(f"/classrooms/{cid}")
 
@@ -2379,13 +2705,14 @@ def move_exam_to_classroom(cid):
     target_cid = request.form["target_classroom_id"]
     conn = get_db()
     # verify exam belongs to this faculty
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger")
         return redirect(f"/classrooms/{cid}")
-    conn.execute("UPDATE exams SET classroom_id=? WHERE id=?", (target_cid, exam_id))
+    conn.execute("UPDATE exams SET classroom_id=%s WHERE id=%s", (target_cid, exam_id))
     conn.commit()
+    conn.close()
     flash("Exam moved to new classroom.", "success")
     return redirect(f"/classrooms/{cid}")
 
@@ -2396,24 +2723,25 @@ def copy_exam_to_classroom(cid):
     exam_id    = request.form["exam_id"]
     target_cid = request.form["target_classroom_id"]
     conn = get_db()
-    orig = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    orig = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not orig:
+        conn.close()
         flash("Exam not found.", "danger"); return redirect(f"/classrooms/{cid}")
     # Create new draft exam in target classroom — no submissions copied
     conn.execute("""INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id,launched,published)
-                    VALUES(?,?,?,?,?,?,0,0)""",
+                    VALUES(%s,%s,%s,%s,%s,%s,0,0)""",
                  (f"Copy of {orig['title']}", session["user_id"], orig["duration"],
                   orig["exam_date"], orig["subject"], target_cid))
     conn.commit()
     new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
     # Copy questions only
-    for q in conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall():
+    for q in conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall():
         conn.execute("""INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty)
-                        VALUES(?,?,?,?,?,?,?,?)""",
+                        VALUES(%s,%s,%s,%s,%s,%s,%s,%s)""",
                      (new_id, q["question"], q["option1"], q["option2"],
                       q["option3"], q["option4"], q["correct_answer"], q["difficulty"]))
     conn.commit()
+    conn.close()
     flash("Exam copied to classroom as a new Draft. Submissions not copied.", "success")
     return redirect(f"/classrooms/{cid}")
 
@@ -2422,17 +2750,19 @@ def edit_classroom(cid):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    room = conn.execute("SELECT * FROM classrooms WHERE id=? AND faculty_id=?",
-                        (cid, session["user_id"])).fetchone()
-    if not room: return redirect("/classrooms")
+    room = conn.execute("SELECT * FROM classrooms WHERE id=%s AND faculty_id=%s", (cid, session["user_id"])).fetchone()
+    if not room:
+        conn.close()
+        return redirect("/classrooms")
     if request.method == "POST":
         name    = request.form["name"]
         subject = request.form.get("subject", "")
-        conn.execute("UPDATE classrooms SET name=?, subject=? WHERE id=?",
-                     (name, subject, cid))
+        conn.execute("UPDATE classrooms SET name=%s, subject=%s WHERE id=%s", (name, subject, cid))
         conn.commit()
+        conn.close()
         flash("Classroom updated.", "success")
         return redirect(f"/classrooms/{cid}")
+    conn.close()
     return render_template("faculty/edit_classroom.html", room=room)
 
 # ── Admin: Classrooms ───────────────────────────────────────────────────────
@@ -2450,6 +2780,7 @@ def admin_classrooms():
         GROUP BY c.id
         ORDER BY c.created_at DESC
     """).fetchall()
+    conn.close()
     return render_template("admin/admin_classrooms.html", rooms=rooms)
 
 @app.route("/admin/classrooms/<int:cid>")
@@ -2457,23 +2788,26 @@ def admin_classroom_detail(cid):
     g = require_role("admin")
     if g: return g
     conn = get_db()
-    room = conn.execute("SELECT * FROM classrooms WHERE id=?", (cid,)).fetchone()
-    if not room: return redirect("/admin/classrooms")
+    room = conn.execute("SELECT * FROM classrooms WHERE id=%s", (cid,)).fetchone()
+    if not room:
+        conn.close()
+        return redirect("/admin/classrooms")
     students = conn.execute("""
         SELECT u.id, u.name, u.email, u.reg_number, cm.joined_at
         FROM classroom_members cm
         JOIN users u ON u.id = cm.student_id
-        WHERE cm.classroom_id = ?
+        WHERE cm.classroom_id = %s
         ORDER BY cm.joined_at DESC
     """, (cid,)).fetchall()
     exams = conn.execute("""
         SELECT e.*, COUNT(q.id) as question_count
         FROM exams e
         LEFT JOIN questions q ON q.exam_id = e.id
-        WHERE e.classroom_id = ?
+        WHERE e.classroom_id = %s
         GROUP BY e.id
         ORDER BY e.created_at DESC
     """, (cid,)).fetchall()
+    conn.close()
     # Pass empty lists for variables expected by the template (for faculty features)
     # Explicitly pass theme to ensure data-theme is set correctly
     return render_template("student/classroom_detail.html", room=room, members=students, exams=exams,
@@ -2522,14 +2856,15 @@ def admin_exams():
     
     if sel_faculty:
         if "HAVING" in query:
-            query += " AND e.faculty_id=?"
+            query += " AND e.faculty_id=%s"
         else:
-            query += " HAVING e.faculty_id=?"
+            query += " HAVING e.faculty_id=%s"
         params.append(sel_faculty)
     
     query += " ORDER BY e.created_at DESC"
     exams = conn.execute(query, params).fetchall()
     faculty_list = conn.execute("SELECT id, name FROM users WHERE role='faculty' AND approved=1").fetchall()
+    conn.close()
     
     return render_template("admin/admin_exams.html", exams=exams, status_f=status_f, sel_faculty=sel_faculty, faculty_list=faculty_list)
 
@@ -2583,25 +2918,25 @@ def admin_reports():
     params = []
     
     if search:
-        query += " AND (s.name LIKE ? OR e.title LIKE ?)"
+        query += " AND (s.name LIKE %s OR e.title LIKE %s)"
         params += [f"%{search}%", f"%{search}%"]
     if sel_student:
-        query += " AND s.id=?"
+        query += " AND s.id=%s"
         params.append(sel_student)
     if sel_exam:
-        query += " AND e.id=?"
+        query += " AND e.id=%s"
         params.append(sel_exam)
     if sel_faculty:
-        query += " AND e.faculty_id=?"
+        query += " AND e.faculty_id=%s"
         params.append(sel_faculty)
     if sel_classroom:
-        query += " AND e.classroom_id=?"
+        query += " AND e.classroom_id=%s"
         params.append(sel_classroom)
     if date_from:
-        query += " AND sub.submitted_at >= ?"
+        query += " AND sub.submitted_at >= %s"
         params.append(date_from)
     if date_to:
-        query += " AND sub.submitted_at <= ?"
+        query += " AND sub.submitted_at <= %s"
         params.append(date_to)
     
     query += " GROUP BY sub.id ORDER BY sub.submitted_at DESC"
@@ -2630,6 +2965,7 @@ def admin_reports():
         LEFT JOIN submissions sub ON sub.exam_id = e.id
         GROUP BY c.id
     """).fetchall()
+    conn.close()
     
     return render_template("admin/admin_reports.html", data=data, students=students, exams=exams,
                            faculty_list=faculty_list, classrooms=classrooms,
@@ -2655,6 +2991,7 @@ def admin_reports_export_csv():
         GROUP BY sub.id
         ORDER BY sub.submitted_at DESC
     """).fetchall()
+    conn.close()
     
     import io, csv
     out = io.StringIO()
@@ -2676,7 +3013,7 @@ def admin_profile():
     g = require_role("admin")
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if request.method == "POST":
         name = request.form.get("name", "").strip()
@@ -2689,37 +3026,42 @@ def admin_profile():
         current_password = request.form.get("current_password", "").strip()
         
         if not name or not email:
+            conn.close()
             flash("Name and email are required.", "danger")
             return redirect("/admin/profile")
         
         if "@" not in email:
+            conn.close()
             flash("Invalid email format.", "danger")
             return redirect("/admin/profile")
         
         # Get current user data to check if email is being changed
-        current_user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        current_user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         current_email = current_user["email"] if current_user else ""
         
         # If email is being changed, require password verification
         if email != current_email:
             if not current_password:
+                conn.close()
                 flash("Current password is required to change email.", "danger")
                 return redirect("/admin/profile")
             
             # Verify current password
             if not check_password_hash(current_user["password"], current_password):
+                conn.close()
                 flash("Incorrect password. Email not updated.", "danger")
                 return redirect("/admin/profile")
         
         try:
             conn.execute("""
-                UPDATE users SET name=?, email=?, phone=?, date_of_birth=?, gender=?,
-                admin_id=?, role_level=?, last_profile_update=?
-                WHERE id=?
+                UPDATE users SET name=%s, email=%s, phone=%s, date_of_birth=%s, gender=%s,
+                admin_id=%s, role_level=%s, last_profile_update=%s
+                WHERE id=%s
             """, (name, email, phone, date_of_birth, gender, admin_id_field, role_level,
                   datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session["user_id"]))
             conn.commit()
         except Exception as db_err:
+            conn.close()
             error_msg = str(db_err)
             if "UNIQUE" in error_msg.upper():
                 flash("That email address is already in use by another account.", "danger")
@@ -2728,22 +3070,25 @@ def admin_profile():
             return redirect("/admin/profile")
         
         # Refresh session from database
-        updated_user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        updated_user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         if updated_user:
             session["name"] = updated_user["name"]
             session["email"] = updated_user["email"]
             if "phone" in updated_user.keys() and updated_user["phone"]:
                 session["phone"] = updated_user["phone"]
         else:
+            conn.close()
             flash("Profile update failed: user record not found.", "danger")
             return redirect("/admin/profile")
         
+        conn.close()
         if email != current_email:
             flash("Email updated successfully. Please use the new email for future logins.", "success")
         else:
             flash("Profile updated successfully.", "success")
         return redirect("/admin/profile")
     
+    conn.close()
     if user:
         user = dict(user)
         # Sync session with database profile picture
@@ -2758,7 +3103,7 @@ def admin_remove_picture():
     g = require_role("admin")
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT profile_picture FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
         db_path = user["profile_picture"]
@@ -2770,12 +3115,14 @@ def admin_remove_picture():
         if os.path.exists(filepath):
             os.remove(filepath)
         
-        conn.execute("UPDATE users SET profile_picture='' WHERE id=?", (session["user_id"],))
+        conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"],))
         conn.commit()
+        conn.close()
         session["profile_pic"] = ""
         log_activity(session["user_id"], "Deleted profile picture")
         flash("Profile picture removed.", "success")
     else:
+        conn.close()
         flash("No profile picture to remove.", "warning")
     
     return redirect("/admin/profile")
@@ -2820,9 +3167,9 @@ def admin_upload_picture():
         
         # Update database
         conn = get_db()
-        conn.execute("UPDATE users SET profile_picture=? WHERE id=?", 
-                   (f"/static/uploads/{filename}", session["user_id"]))
+        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (f"/static/uploads/{filename}", session["user_id"]))
         conn.commit()
+        conn.close()
         session["profile_pic"] = f"uploads/{filename}"
         log_activity(session["user_id"], "Updated profile picture")
         
@@ -2837,7 +3184,7 @@ def admin_change_password():
     g = require_role("admin")
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if request.method == "POST":
         current_password = request.form["current_password"]
@@ -2845,24 +3192,28 @@ def admin_change_password():
         confirm_password = request.form["confirm_password"]
         
         if not check_password_hash(user["password"], current_password):
+            conn.close()
             flash("Current password is incorrect.", "danger")
             return redirect("/admin/change_password")
         
         if new_password != confirm_password:
+            conn.close()
             flash("New passwords do not match.", "danger")
             return redirect("/admin/change_password")
         
         if len(new_password) < 6:
+            conn.close()
             flash("Password must be at least 6 characters long.", "danger")
             return redirect("/admin/change_password")
         
-        conn.execute("UPDATE users SET password=? WHERE id=?", 
-                    (generate_password_hash(new_password), session["user_id"]))
+        conn.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(new_password), session["user_id"]))
         conn.commit()
+        conn.close()
         log_activity(session["user_id"], "Changed password")
         flash("Password changed successfully.", "success")
         return redirect("/admin/change_password")
     
+    conn.close()
     return render_template("admin/admin_change_password.html")
 
 # Student: join classroom
@@ -2879,32 +3230,35 @@ def join_classroom():
         try:
             conn = get_db()
             # Check for valid classroom code (including archived ones for proper error message)
-            room = conn.execute("SELECT * FROM classrooms WHERE code=?", (code,)).fetchone()
+            room = conn.execute("SELECT * FROM classrooms WHERE code=%s", (code,)).fetchone()
             if not room:
+                conn.close()
                 flash("❌ Invalid classroom code. Please check the code and try again.", "danger")
                 return redirect("/join_classroom")
             
             # Check if classroom is archived
             if "is_archived" in room.keys() and room["is_archived"] == 1:
+                conn.close()
                 flash("⚠ This classroom is no longer accepting new students.", "danger")
                 return redirect("/join_classroom")
             
             # Check if classroom is inactive (if there's an is_active column)
             if "is_active" in room.keys() and room["is_active"] == 0:
+                conn.close()
                 flash("⚠ This classroom is no longer accepting new students.", "danger")
                 return redirect("/join_classroom")
             
             # Check already joined
-            existing = conn.execute("SELECT id FROM classroom_members WHERE classroom_id=? AND student_id=?",
-                                    (room["id"], session["user_id"])).fetchone()
+            existing = conn.execute("SELECT id FROM classroom_members WHERE classroom_id=%s AND student_id=%s", (room["id"], session["user_id"])).fetchone()
             if existing:
+                conn.close()
                 flash("ℹ You have already joined this classroom.", "warning")
                 return redirect("/student/classrooms")
             
             # All validations passed, join the classroom
-            conn.execute("INSERT INTO classroom_members(classroom_id,student_id) VALUES(?,?)",
-                         (room["id"], session["user_id"]))
+            conn.execute("INSERT INTO classroom_members(classroom_id,student_id) VALUES(%s,%s)", (room["id"], session["user_id"]))
             conn.commit()
+            conn.close()
             log_activity(session["user_id"], f"Joined classroom: {room['name']}")
             flash(f"✓ Joined classroom: {room['name']}!", "success")
             return redirect("/student/classrooms")
@@ -2932,10 +3286,11 @@ def student_classrooms():
         FROM classrooms
         JOIN classroom_members ON classrooms.id = classroom_members.classroom_id
         JOIN users ON users.id = classrooms.faculty_id
-        WHERE classroom_members.student_id = ?
+        WHERE classroom_members.student_id = %s
         AND (classrooms.is_archived IS NULL OR classrooms.is_archived=0)
         ORDER BY classrooms.name
     """, (sid,)).fetchall()
+    conn.close()
     
     return render_template("student/student_classrooms.html", classrooms=classrooms)
 
@@ -2957,29 +3312,32 @@ def student_profile():
         current_password = request.form.get("current_password", "").strip()
         
         # Get current user data to check if email is being changed
-        current_user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        current_user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         current_email = current_user["email"] if current_user else ""
         
         # If email is being changed, require password verification
         if email != current_email:
             if not current_password:
+                conn.close()
                 flash("Current password is required to change email.", "danger")
                 return redirect("/student/profile")
             
             # Verify current password
             if not check_password_hash(current_user["password"], current_password):
+                conn.close()
                 flash("Incorrect password. Email not updated.", "danger")
                 return redirect("/student/profile")
         
         try:
             conn.execute("""
-                UPDATE users SET name=?, email=?, reg_number=?, phone=?,
-                date_of_birth=?, gender=?, program=?, section=?, last_profile_update=?
-                WHERE id=?
+                UPDATE users SET name=%s, email=%s, reg_number=%s, phone=%s,
+                date_of_birth=%s, gender=%s, program=%s, section=%s, last_profile_update=%s
+                WHERE id=%s
             """, (name, email, reg_number, phone, date_of_birth, gender, program, section,
                   datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session["user_id"]))
             conn.commit()
         except Exception as db_err:
+            conn.close()
             error_msg = str(db_err)
             if "UNIQUE" in error_msg.upper():
                 flash("That email address is already in use by another account.", "danger")
@@ -2987,23 +3345,26 @@ def student_profile():
                 flash(f"Profile update failed: {error_msg}", "danger")
             return redirect("/student/profile")
         # Refresh session from database
-        updated_user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        updated_user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         if updated_user:
             session["name"] = updated_user["name"]
             session["email"] = updated_user["email"]
             if "phone" in updated_user.keys() and updated_user["phone"]:
                 session["phone"] = updated_user["phone"]
         else:
+            conn.close()
             flash("Profile update failed: user record not found.", "danger")
             return redirect("/student/profile")
         
+        conn.close()
         if email != current_email:
             flash("Email updated successfully. Please use the new email for future logins.", "success")
         else:
             flash("Profile updated successfully.", "success")
         return redirect("/student/profile")
     
-    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
+    conn.close()
     if user:
         user = dict(user)
         # Sync session with database profile picture
@@ -3024,27 +3385,31 @@ def student_change_password():
         new_password = request.form["new_password"]
         confirm_password = request.form["confirm_password"]
         
-        user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         
         if not check_password_hash(user["password"], current_password):
+            conn.close()
             flash("Current password is incorrect.", "danger")
             return redirect("/student/change_password")
         
         if new_password != confirm_password:
+            conn.close()
             flash("New passwords do not match.", "danger")
             return redirect("/student/change_password")
         
         if len(new_password) < 6:
+            conn.close()
             flash("Password must be at least 6 characters long.", "danger")
             return redirect("/student/change_password")
         
-        conn.execute("UPDATE users SET password=? WHERE id=?", 
-                    (generate_password_hash(new_password), session["user_id"]))
+        conn.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(new_password), session["user_id"]))
         conn.commit()
+        conn.close()
         log_activity(session["user_id"], "Changed password")
         flash("Password changed successfully.", "success")
         return redirect("/student/change_password")
     
+    conn.close()
     return render_template("student/student_change_password.html")
 
 # Student: Upload Profile Picture (AJAX for cropping)
@@ -3076,9 +3441,9 @@ def student_upload_picture():
     
     # Update database (use profile_picture column for consistency)
     conn = get_db()
-    conn.execute("UPDATE users SET profile_picture=? WHERE id=?", 
-               (f"/static/uploads/{filename}", session["user_id"]))
+    conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (f"/static/uploads/{filename}", session["user_id"]))
     conn.commit()
+    conn.close()
     session["profile_pic"] = f"uploads/{filename}"
     log_activity(session["user_id"], "Updated profile picture")
     
@@ -3091,7 +3456,7 @@ def student_remove_picture():
         return redirect("/")
     
     conn = get_db()
-    user = conn.execute("SELECT profile_picture FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
         # Delete file from disk
@@ -3105,11 +3470,14 @@ def student_remove_picture():
             os.remove(filepath)
         
         # Update database (use profile_picture column for consistency)
-        conn.execute("UPDATE users SET profile_picture='' WHERE id=?", (session["user_id"]))
+        conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"]))
         conn.commit()
+        conn.close()
         session["profile_pic"] = ""
         log_activity(session["user_id"], "Deleted profile picture")
         flash("Profile picture deleted.", "success")
+    else:
+        conn.close()
     
     return redirect("/student/profile")
 
@@ -3126,7 +3494,7 @@ def faculty():
                exams.launched, exams.published, exams.subject, exams.classroom_id,
                COUNT(questions.id) AS total_questions
         FROM exams LEFT JOIN questions ON exams.id=questions.exam_id
-        WHERE exams.faculty_id=? GROUP BY exams.id ORDER BY exams.id DESC
+        WHERE exams.faculty_id=%s GROUP BY exams.id ORDER BY exams.id DESC
     """, (session["user_id"],)).fetchall()
     exams_with_status = []
     for e in exams:
@@ -3137,12 +3505,12 @@ def faculty():
             total_submissions = conn.execute("""
                 SELECT COUNT(*) FROM submissions s
                 JOIN users u ON u.id = s.student_id
-                WHERE s.exam_id=?
+                WHERE s.exam_id=%s
             """, (e["id"],)).fetchone()[0]
             published_submissions = conn.execute("""
                 SELECT COUNT(*) FROM submissions s
                 JOIN users u ON u.id = s.student_id
-                WHERE s.exam_id=? AND s.result_published=1
+                WHERE s.exam_id=%s AND s.result_published=1
             """, (e["id"],)).fetchone()[0]
             pending_submissions = total_submissions - published_submissions
             
@@ -3163,7 +3531,7 @@ def faculty():
     
     # Pass classrooms for context with student counts
     my_classrooms = conn.execute(
-        "SELECT * FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)
+        "SELECT * FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)
     ).fetchall()
     
     # Add student counts to classrooms (only valid records)
@@ -3173,10 +3541,10 @@ def faculty():
             student_count = conn.execute("""
                 SELECT COUNT(*) FROM classroom_members cm
                 JOIN users u ON u.id = cm.student_id
-                WHERE cm.classroom_id=?
+                WHERE cm.classroom_id=%s
             """, (c["id"],)).fetchone()[0]
             exam_count = conn.execute(
-                "SELECT COUNT(*) FROM exams WHERE classroom_id=? AND faculty_id=?", (c["id"], session["user_id"])
+                "SELECT COUNT(*) FROM exams WHERE classroom_id=%s AND faculty_id=%s", (c["id"], session["user_id"])
             ).fetchone()[0]
             classrooms_with_counts.append({
                 "classroom": c,
@@ -3191,7 +3559,7 @@ def faculty():
     try:
         recent_activities = conn.execute("""
             SELECT * FROM activity_log 
-            WHERE user_id=? 
+            WHERE user_id=%s 
             ORDER BY timestamp DESC 
             LIMIT 5
         """, (session["user_id"],)).fetchall()
@@ -3220,7 +3588,7 @@ def faculty():
             FROM submissions
             JOIN users u ON u.id = submissions.student_id
             JOIN exams ON exams.id = submissions.exam_id
-            WHERE exams.faculty_id=? AND exams.published=1
+            WHERE exams.faculty_id=%s AND exams.published=1
         """, (session["user_id"],)).fetchall()
         
         # Calculate pass rate in Python
@@ -3250,7 +3618,7 @@ def faculty():
     try:
         recent_publications = conn.execute("""
             SELECT COUNT(*) as count FROM exams
-            WHERE faculty_id=? AND published=1 
+            WHERE faculty_id=%s AND published=1 
             AND datetime(created_at) >= datetime('now', '-7 days')
         """, (session["user_id"],)).fetchone()
         recent_publications_count = recent_publications["count"] if recent_publications else 0
@@ -3272,7 +3640,7 @@ def faculty():
         published_exams = conn.execute("""
             SELECT exams.id, exams.title, exams.pass_percentage
             FROM exams
-            WHERE exams.faculty_id=? AND exams.published=1
+            WHERE exams.faculty_id=%s AND exams.published=1
         """, (session["user_id"],)).fetchall()
         
         for exam in published_exams:
@@ -3284,7 +3652,7 @@ def faculty():
             submissions = conn.execute("""
                 SELECT score FROM submissions s
                 JOIN users u ON u.id = s.student_id
-                WHERE s.exam_id=?
+                WHERE s.exam_id=%s
             """, (exam_id,)).fetchall()
             
             if submissions:
@@ -3298,6 +3666,7 @@ def faculty():
         app.logger.exception("Exam chart data calculation failed")
         exam_chart_data = []
     
+    conn.close()
     return render_template("faculty/faculty_dashboard.html", 
                            exams=exams,
                            exams_with_status=exams_with_status, 
@@ -3320,7 +3689,7 @@ def faculty_exams():
                exams.launched, exams.published, exams.subject, exams.classroom_id,
                COUNT(questions.id) AS total_questions
         FROM exams LEFT JOIN questions ON exams.id=questions.exam_id
-        WHERE exams.faculty_id=? GROUP BY exams.id ORDER BY exams.id DESC
+        WHERE exams.faculty_id=%s GROUP BY exams.id ORDER BY exams.id DESC
     """, (session["user_id"],)).fetchall()
     exams_with_status = []
     for e in exams:
@@ -3334,8 +3703,9 @@ def faculty_exams():
     
     # Pass classrooms for context
     my_classrooms = conn.execute(
-        "SELECT * FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)
+        "SELECT * FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)
     ).fetchall()
+    conn.close()
     
     return render_template("faculty/faculty_exams.html", 
                            exams=exams,
@@ -3366,17 +3736,17 @@ def faculty_results():
                FROM submissions JOIN users ON users.id=submissions.student_id
                JOIN exams ON exams.id=submissions.exam_id
                JOIN questions ON questions.exam_id=exams.id
-               WHERE exams.faculty_id=?"""
+               WHERE exams.faculty_id=%s"""
     params = [session["user_id"]]
     
-    if sel_subject: query += " AND exams.subject=?"; params.append(sel_subject)
-    if sel_classroom: query += " AND exams.classroom_id=?"; params.append(sel_classroom)
-    if sel_exam: query += " AND exams.id=?"; params.append(sel_exam)
-    if sel_date: query += " AND DATE(exams.exam_date)=?"; params.append(sel_date)
-    if sel_date_from: query += " AND exams.exam_date>=?"; params.append(sel_date_from)
-    if sel_date_to: query += " AND exams.exam_date<=?"; params.append(sel_date_to)
+    if sel_subject: query += " AND exams.subject=%s"; params.append(sel_subject)
+    if sel_classroom: query += " AND exams.classroom_id=%s"; params.append(sel_classroom)
+    if sel_exam: query += " AND exams.id=%s"; params.append(sel_exam)
+    if sel_date: query += " AND DATE(exams.exam_date)=%s"; params.append(sel_date)
+    if sel_date_from: query += " AND exams.exam_date>=%s"; params.append(sel_date_from)
+    if sel_date_to: query += " AND exams.exam_date<=%s"; params.append(sel_date_to)
     if sel_search:
-        query += " AND (users.name LIKE ? OR users.reg_number LIKE ? OR users.email LIKE ?)"
+        query += " AND (users.name LIKE %s OR users.reg_number LIKE %s OR users.email LIKE %s)"
         like_term = f"%{sel_search}%"
         params.extend([like_term, like_term, like_term])
     
@@ -3402,13 +3772,11 @@ def faculty_results():
         query += " ORDER BY exams.title, users.name"
     
     results  = conn.execute(query, params).fetchall()
-    my_exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=? ORDER BY title",
-                            (session["user_id"],)).fetchall()
-    classrooms = conn.execute("SELECT id, name FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name",
-                             (session["user_id"],)).fetchall()
-    subjects = conn.execute("SELECT DISTINCT subject FROM exams WHERE faculty_id=? AND subject IS NOT NULL AND subject!='' ORDER BY subject",
-                           (session["user_id"],)).fetchall()
+    my_exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=%s ORDER BY title", (session["user_id"],)).fetchall()
+    classrooms = conn.execute("SELECT id, name FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+    subjects = conn.execute("SELECT DISTINCT subject FROM exams WHERE faculty_id=%s AND subject IS NOT NULL AND subject!='' ORDER BY subject", (session["user_id"],)).fetchall()
     subjects = [s["subject"] for s in subjects]
+    conn.close()
     
     # Correct pass/fail using is_pass helper
     pass_count = sum(1 for r in results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
@@ -3443,17 +3811,17 @@ def faculty_export_csv():
                FROM submissions JOIN users ON users.id=submissions.student_id
                JOIN exams ON exams.id=submissions.exam_id
                JOIN questions ON questions.exam_id=exams.id
-               WHERE exams.faculty_id=?"""
+               WHERE exams.faculty_id=%s"""
     params = [session["user_id"]]
     
-    if sel_subject: query += " AND exams.subject=?"; params.append(sel_subject)
-    if sel_classroom: query += " AND exams.classroom_id=?"; params.append(sel_classroom)
-    if sel_exam: query += " AND exams.id=?"; params.append(sel_exam)
-    if sel_date: query += " AND DATE(exams.exam_date)=?"; params.append(sel_date)
-    if sel_date_from: query += " AND exams.exam_date>=?"; params.append(sel_date_from)
-    if sel_date_to: query += " AND exams.exam_date<=?"; params.append(sel_date_to)
+    if sel_subject: query += " AND exams.subject=%s"; params.append(sel_subject)
+    if sel_classroom: query += " AND exams.classroom_id=%s"; params.append(sel_classroom)
+    if sel_exam: query += " AND exams.id=%s"; params.append(sel_exam)
+    if sel_date: query += " AND DATE(exams.exam_date)=%s"; params.append(sel_date)
+    if sel_date_from: query += " AND exams.exam_date>=%s"; params.append(sel_date_from)
+    if sel_date_to: query += " AND exams.exam_date<=%s"; params.append(sel_date_to)
     if sel_search:
-        query += " AND (users.name LIKE ? OR users.reg_number LIKE ? OR users.email LIKE ?)"
+        query += " AND (users.name LIKE %s OR users.reg_number LIKE %s OR users.email LIKE %s)"
         like_term = f"%{sel_search}%"
         params.extend([like_term, like_term, like_term])
     
@@ -3479,6 +3847,7 @@ def faculty_export_csv():
         query += " ORDER BY exams.title, users.name"
     
     results = conn.execute(query, params).fetchall()
+    conn.close()
     
     out = io.StringIO(); w = csv.writer(out)
     w.writerow([f"# Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
@@ -3536,17 +3905,17 @@ def faculty_export_pdf():
                    FROM submissions JOIN users ON users.id=submissions.student_id
                    JOIN exams ON exams.id=submissions.exam_id
                    JOIN questions ON questions.exam_id=exams.id
-                   WHERE exams.faculty_id=?"""
+                   WHERE exams.faculty_id=%s"""
         params = [session["user_id"]]
         
-        if sel_subject: query += " AND exams.subject=?"; params.append(sel_subject)
-        if sel_classroom: query += " AND exams.classroom_id=?"; params.append(sel_classroom)
-        if sel_exam: query += " AND exams.id=?"; params.append(sel_exam)
-        if sel_date: query += " AND DATE(exams.exam_date)=?"; params.append(sel_date)
-        if sel_date_from: query += " AND exams.exam_date>=?"; params.append(sel_date_from)
-        if sel_date_to: query += " AND exams.exam_date<=?"; params.append(sel_date_to)
+        if sel_subject: query += " AND exams.subject=%s"; params.append(sel_subject)
+        if sel_classroom: query += " AND exams.classroom_id=%s"; params.append(sel_classroom)
+        if sel_exam: query += " AND exams.id=%s"; params.append(sel_exam)
+        if sel_date: query += " AND DATE(exams.exam_date)=%s"; params.append(sel_date)
+        if sel_date_from: query += " AND exams.exam_date>=%s"; params.append(sel_date_from)
+        if sel_date_to: query += " AND exams.exam_date<=%s"; params.append(sel_date_to)
         if sel_search:
-            query += " AND (users.name LIKE ? OR users.reg_number LIKE ? OR users.email LIKE ?)"
+            query += " AND (users.name LIKE %s OR users.reg_number LIKE %s OR users.email LIKE %s)"
             like_term = f"%{sel_search}%"
             params.extend([like_term, like_term, like_term])
         
@@ -3572,6 +3941,7 @@ def faculty_export_pdf():
             query += " ORDER BY exams.title, users.name"
         
         results = conn.execute(query, params).fetchall()
+        conn.close()
         
         # Calculate summary stats
         total_count = len(results)
@@ -3763,9 +4133,9 @@ def student_analytics():
     sel_subject = request.args.get("subject", "")
     
     # Get filter options
-    classrooms = conn.execute("SELECT id, name FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (fid,)).fetchall()
-    exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=? ORDER BY title", (fid,)).fetchall()
-    subjects = conn.execute("SELECT DISTINCT subject FROM exams WHERE faculty_id=? AND subject IS NOT NULL AND subject!='' ORDER BY subject", (fid,)).fetchall()
+    classrooms = conn.execute("SELECT id, name FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (fid,)).fetchall()
+    exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=%s ORDER BY title", (fid,)).fetchall()
+    subjects = conn.execute("SELECT DISTINCT subject FROM exams WHERE faculty_id=%s AND subject IS NOT NULL AND subject!='' ORDER BY subject", (fid,)).fetchall()
     subjects = [s["subject"] for s in subjects]
     
     # Build base query for student performance data
@@ -3780,18 +4150,18 @@ def student_analytics():
         JOIN exams ON exams.id=submissions.exam_id
         LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
         JOIN questions ON questions.exam_id=exams.id
-        WHERE exams.faculty_id=?
+        WHERE exams.faculty_id=%s
     """
     params = [fid]
     
     if sel_classroom:
-        query += " AND exams.classroom_id=?"
+        query += " AND exams.classroom_id=%s"
         params.append(sel_classroom)
     if sel_exam:
-        query += " AND exams.id=?"
+        query += " AND exams.id=%s"
         params.append(sel_exam)
     if sel_subject:
-        query += " AND exams.subject=?"
+        query += " AND exams.subject=%s"
         params.append(sel_subject)
     
     query += " GROUP BY users.id, exams.id"
@@ -3877,6 +4247,7 @@ def student_analytics():
                 "lowest_marks": lowest_marks
             })
     
+    conn.close()
     return render_template("faculty/faculty_analytics.html",
                            top_performers=top_performers,
                            needs_improvement=needs_improvement,
@@ -3914,23 +4285,24 @@ def student_analytics_export_csv():
         JOIN exams ON exams.id=submissions.exam_id
         LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
         JOIN questions ON questions.exam_id=exams.id
-        WHERE exams.faculty_id=?
+        WHERE exams.faculty_id=%s
     """
     params = [fid]
     
     if sel_classroom:
-        query += " AND exams.classroom_id=?"
+        query += " AND exams.classroom_id=%s"
         params.append(sel_classroom)
     if sel_exam:
-        query += " AND exams.id=?"
+        query += " AND exams.id=%s"
         params.append(sel_exam)
     if sel_subject:
-        query += " AND exams.subject=?"
+        query += " AND exams.subject=%s"
         params.append(sel_subject)
     
     query += " GROUP BY users.id, exams.id"
     
     results = conn.execute(query, params).fetchall()
+    conn.close()
     
     out = io.StringIO()
     w = csv.writer(out)
@@ -3992,23 +4364,24 @@ def student_analytics_export_pdf():
             JOIN exams ON exams.id=submissions.exam_id
             LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
             JOIN questions ON questions.exam_id=exams.id
-            WHERE exams.faculty_id=?
+            WHERE exams.faculty_id=%s
         """
         params = [fid]
         
         if sel_classroom:
-            query += " AND exams.classroom_id=?"
+            query += " AND exams.classroom_id=%s"
             params.append(sel_classroom)
         if sel_exam:
-            query += " AND exams.id=?"
+            query += " AND exams.id=%s"
             params.append(sel_exam)
         if sel_subject:
-            query += " AND exams.subject=?"
+            query += " AND exams.subject=%s"
             params.append(sel_subject)
         
         query += " GROUP BY users.id, exams.id"
         
         results = conn.execute(query, params).fetchall()
+        conn.close()
         
         # Calculate available width correctly for portrait A4
         PAGE_W, PAGE_H = A4
@@ -4196,13 +4569,16 @@ def preview_exam(exam_id):
     if g: return g
     conn = get_db()
     if session["role"] == "admin":
-        exam = conn.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
-        if not exam: return redirect("/admin/exams")
+        exam = conn.execute("SELECT * FROM exams WHERE id=%s", (exam_id,)).fetchone()
+        if not exam:
+            conn.close()
+            return redirect("/admin/exams")
     else:
-        exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                            (exam_id,session["user_id"])).fetchone()
-        if not exam: return redirect("/faculty")
-    questions = conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+        exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id,session["user_id"])).fetchone()
+        if not exam:
+            conn.close()
+            return redirect("/faculty")
+    questions = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
     exam_results = None
     if session["role"] == "admin":
         total_marks = sum(q["marks"] or 1 for q in questions)
@@ -4211,10 +4587,11 @@ def preview_exam(exam_id):
                    submissions.submitted_at, submissions.result_published
             FROM submissions
             JOIN users ON users.id = submissions.student_id
-            WHERE submissions.exam_id = ?
+            WHERE submissions.exam_id = %s
             ORDER BY submissions.submitted_at DESC
         """, (exam_id,)).fetchall()
         exam_results = [dict(r, total=total_marks) for r in exam_results]
+    conn.close()
     return render_template("faculty/preview_exam.html", exam=exam, questions=questions, exam_results=exam_results)
 
 @app.route("/copy_exam/<exam_id>")
@@ -4222,18 +4599,17 @@ def copy_exam(exam_id):
     g = require_role("faculty"); 
     if g: return g
     conn = get_db()
-    orig = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    orig = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not orig:
+        conn.close()
         flash("Exam not found.", "danger"); return redirect("/faculty")
-    conn.execute("INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id) VALUES(?,?,?,?,?,?)",
-                 (f"Copy of {orig['title']}",session["user_id"],orig["duration"],orig["exam_date"],orig["subject"],orig["classroom_id"]))
+    conn.execute("INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id) VALUES(%s,%s,%s,%s,%s,%s)", (f"Copy of {orig['title']}",session["user_id"],orig["duration"],orig["exam_date"],orig["subject"],orig["classroom_id"]))
     conn.commit()
     new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
-    for q in conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall():
-        conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty) VALUES(?,?,?,?,?,?,?,?)",
-                     (new_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"]))
+    for q in conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall():
+        conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (new_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"]))
     conn.commit()
+    conn.close()
     flash("Exam copied.", "success"); return redirect("/faculty")
 
 @app.route("/create_exam", methods=["GET","POST"])
@@ -4260,17 +4636,18 @@ def create_exam():
                        (SELECT COUNT(*) FROM exams WHERE classroom_id = classrooms.id) as exam_count
                 FROM classrooms
                 LEFT JOIN users ON users.id = classrooms.faculty_id
-                WHERE classrooms.faculty_id=?
+                WHERE classrooms.faculty_id=%s
                 ORDER BY classrooms.name
             """, (session["user_id"],)).fetchall()
             
             # Get statistics
             stats = {
-                'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=?", (session["user_id"],)).fetchone()[0],
-                'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=1", (session["user_id"],)).fetchone()[0],
-                'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=0", (session["user_id"],)).fetchone()[0],
-                'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+                'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
+                'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
+                'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
+                'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
             }
+            conn.close()
             
             return render_template("faculty/create_exam.html", classrooms=classrooms, stats=stats)
         
@@ -4286,17 +4663,18 @@ def create_exam():
                            (SELECT COUNT(*) FROM exams WHERE classroom_id = classrooms.id) as exam_count
                     FROM classrooms
                     LEFT JOIN users ON users.id = classrooms.faculty_id
-                    WHERE classrooms.faculty_id=?
+                    WHERE classrooms.faculty_id=%s
                     ORDER BY classrooms.name
                 """, (session["user_id"],)).fetchall()
                 
                 # Get statistics
                 stats = {
-                    'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=?", (session["user_id"],)).fetchone()[0],
-                    'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=1", (session["user_id"],)).fetchone()[0],
-                    'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=0", (session["user_id"],)).fetchone()[0],
-                    'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+                    'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
+                    'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
+                    'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
+                    'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
                 }
+                conn.close()
                 
                 return render_template("faculty/create_exam.html", classrooms=classrooms, stats=stats)
         except ValueError:
@@ -4308,26 +4686,27 @@ def create_exam():
                        (SELECT COUNT(*) FROM exams WHERE classroom_id = classrooms.id) as exam_count
                 FROM classrooms
                 LEFT JOIN users ON users.id = classrooms.faculty_id
-                WHERE classrooms.faculty_id=?
+                WHERE classrooms.faculty_id=%s
                 ORDER BY classrooms.name
             """, (session["user_id"],)).fetchall()
             
             # Get statistics
             stats = {
-                'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=?", (session["user_id"],)).fetchone()[0],
-                'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=1", (session["user_id"],)).fetchone()[0],
-                'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=0", (session["user_id"],)).fetchone()[0],
-                'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+                'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
+                'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
+                'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
+                'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
             }
+            conn.close()
             
             return render_template("faculty/create_exam.html", classrooms=classrooms, stats=stats)
         
         # Insert exam
         published = 1 if action == "create" else 0
-        conn.execute("INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id,total_marks,pass_mark,pass_percentage,instructions,published) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
-                     (title,session["user_id"],duration,exam_date,subject,classroom_id,0,50,pass_pct,instructions,published))
+        conn.execute("INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id,total_marks,pass_mark,pass_percentage,instructions,published) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (title,session["user_id"],duration,exam_date,subject,classroom_id,0,50,pass_pct,instructions,published))
         conn.commit()
         exam_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        conn.close()
         log_activity(session["user_id"], f"Created exam: {title}")
         
         if action == "draft":
@@ -4345,17 +4724,18 @@ def create_exam():
                (SELECT COUNT(*) FROM exams WHERE classroom_id = classrooms.id) as exam_count
         FROM classrooms
         LEFT JOIN users ON users.id = classrooms.faculty_id
-        WHERE classrooms.faculty_id=?
+        WHERE classrooms.faculty_id=%s
         ORDER BY classrooms.name
     """, (session["user_id"],)).fetchall()
     
     # Get statistics
     stats = {
-        'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=?", (session["user_id"],)).fetchone()[0],
-        'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=1", (session["user_id"],)).fetchone()[0],
-        'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=? AND published=0", (session["user_id"],)).fetchone()[0],
-        'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+        'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
+        'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
+        'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
+        'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
     }
+    conn.close()
     
     return render_template("faculty/create_exam.html", classrooms=classrooms, stats=stats)
 
@@ -4364,13 +4744,14 @@ def edit_exam(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger")
         return redirect("/faculty")
     # Only check launched field - published is for result publication, not launch state
     if exam["launched"] == 1:
+        conn.close()
         flash("Cannot edit a launched exam.", "warning")
         return redirect("/faculty")
     
@@ -4386,20 +4767,23 @@ def edit_exam(exam_id):
             pass_pct = float(pass_percentage) if pass_percentage else 50.0
             if not (0 <= pass_pct <= 100):
                 flash("Pass percentage must be between 0 and 100.", "danger")
-                classrooms = conn.execute("SELECT * FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+                classrooms = conn.execute("SELECT * FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+                conn.close()
                 return render_template("faculty/edit_exam.html", exam=exam, classrooms=classrooms)
         except ValueError:
             flash("Invalid pass percentage value.", "danger")
-            classrooms = conn.execute("SELECT * FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+            classrooms = conn.execute("SELECT * FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+            conn.close()
             return render_template("faculty/edit_exam.html", exam=exam, classrooms=classrooms)
-        conn.execute("UPDATE exams SET title=?, duration=?, exam_date=?, subject=?, pass_percentage=?, instructions=? WHERE id=?",
-                     (title, duration, exam_date, subject, pass_pct, instructions, exam_id))
+        conn.execute("UPDATE exams SET title=%s, duration=%s, exam_date=%s, subject=%s, pass_percentage=%s, instructions=%s WHERE id=%s", (title, duration, exam_date, subject, pass_pct, instructions, exam_id))
         conn.commit()
+        conn.close()
         log_activity(session["user_id"], f"Edited exam: {title}")
         flash("Exam updated.", "success")
         return redirect("/faculty")
     
-    classrooms = conn.execute("SELECT * FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+    classrooms = conn.execute("SELECT * FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (session["user_id"],)).fetchall()
+    conn.close()
     return render_template("faculty/edit_exam.html", exam=exam, classrooms=classrooms)
 
 @app.route("/add_questions/<exam_id>", methods=["GET","POST"])
@@ -4407,12 +4791,13 @@ def add_questions(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         return redirect("/faculty")
     # Only check launched field - published is for result publication, not launch state
     if exam["launched"] == 1:
+        conn.close()
         flash("Cannot add questions to a launched exam.", "warning")
         return redirect(f"/view_questions/{exam_id}")
     if request.method == "POST":
@@ -4426,22 +4811,22 @@ def add_questions(exam_id):
         marks = request.form.get("marks", "1").strip() or "1"
         if not all([q, o1, o2, o3, o4, ans]):
             flash("All fields are required.", "danger")
-        elif conn.execute("SELECT id FROM questions WHERE exam_id=? AND question=?",
-                          (exam_id, q)).fetchone():
+        elif conn.execute("SELECT id FROM questions WHERE exam_id=%s AND question=%s", (exam_id, q)).fetchone():
             flash("Duplicate question — this question already exists in this exam.", "warning")
         else:
             conn.execute("""INSERT INTO questions
                 (exam_id,question,option1,option2,option3,option4,correct_answer,difficulty,marks)
-                VALUES(?,?,?,?,?,?,?,?,?)""",
+                VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (exam_id, q, o1, o2, o3, o4, ans, diff, marks))
             conn.commit()
             # Recalculate total_marks
-            total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=?", (exam_id,)).fetchone()[0] or 0
-            conn.execute("UPDATE exams SET total_marks=? WHERE id=?", (total, exam_id))
+            total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0] or 0
+            conn.execute("UPDATE exams SET total_marks=%s WHERE id=%s", (total, exam_id))
             conn.commit()
             flash("Question added.", "success")
-    q_count = conn.execute("SELECT COUNT(*) FROM questions WHERE exam_id=?", (exam_id,)).fetchone()[0]
-    questions_list = conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+    q_count = conn.execute("SELECT COUNT(*) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0]
+    questions_list = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
+    conn.close()
     return render_template("faculty/add_questions.html", exam_id=exam_id, exam=exam,
                            q_count=q_count, questions_list=questions_list)
 
@@ -4450,26 +4835,27 @@ def select_questions(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger"); return redirect("/faculty")
     if request.method == "POST":
         added = 0
         for qid in request.form.getlist("questions"):
-            q = conn.execute("SELECT * FROM question_bank WHERE id=?", (qid,)).fetchone()
-            if not conn.execute("SELECT id FROM questions WHERE exam_id=? AND question=?", (exam_id,q["question"])).fetchone():
-                conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty,marks) VALUES(?,?,?,?,?,?,?,?,?)",
-                             (exam_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"] if q["difficulty"] else "medium", 1))
+            q = conn.execute("SELECT * FROM question_bank WHERE id=%s", (qid,)).fetchone()
+            if not conn.execute("SELECT id FROM questions WHERE exam_id=%s AND question=%s", (exam_id,q["question"])).fetchone():
+                conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty,marks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)", (exam_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"] if q["difficulty"] else "medium", 1))
                 added += 1
         conn.commit()
         # Recalculate total_marks
-        total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=?", (exam_id,)).fetchone()[0] or 0
-        conn.execute("UPDATE exams SET total_marks=? WHERE id=?", (total, exam_id))
+        total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0] or 0
+        conn.execute("UPDATE exams SET total_marks=%s WHERE id=%s", (total, exam_id))
         conn.commit()
+        conn.close()
         flash(f"{added} question(s) added.", "success")
         return redirect(f"/add_questions/{exam_id}")
-    questions = conn.execute("SELECT * FROM question_bank WHERE faculty_id=?", (session["user_id"],)).fetchall()
+    questions = conn.execute("SELECT * FROM question_bank WHERE faculty_id=%s", (session["user_id"],)).fetchall()
+    conn.close()
     return render_template("faculty/select_questions.html", questions=questions, exam_id=exam_id)
 
 @app.route("/launch_exam/<exam_id>")
@@ -4477,18 +4863,22 @@ def launch_exam(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         return redirect("/faculty")
     if exam["published"] == 1:
+        conn.close()
         flash("This exam is already completed.", "warning"); return redirect("/faculty")
     if exam["launched"] == 1:
+        conn.close()
         flash("This exam is already launched.", "warning"); return redirect("/faculty")
-    if not conn.execute("SELECT id FROM questions WHERE exam_id=?", (exam_id,)).fetchone():
+    if not conn.execute("SELECT id FROM questions WHERE exam_id=%s", (exam_id,)).fetchone():
+        conn.close()
         flash("Add at least one question before launching.", "warning")
         return redirect(f"/add_questions/{exam_id}")
-    conn.execute("UPDATE exams SET launched=1 WHERE id=?", (exam_id,)); conn.commit()
+    conn.execute("UPDATE exams SET launched=1 WHERE id=%s", (exam_id,)); conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Launched exam id={exam_id}")
     flash("Exam launched! Students can now attempt it.", "success")
     # Redirect to classroom detail if exam belongs to a classroom
@@ -4501,14 +4891,16 @@ def publish_result(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger"); return redirect("/faculty")
     if exam["published"] == 1:
+        conn.close()
         flash("Results already published.", "warning"); return redirect("/faculty")
-    conn.execute("UPDATE exams SET published=1 WHERE id=?", (exam_id,))
+    conn.execute("UPDATE exams SET published=1 WHERE id=%s", (exam_id,))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Published results for exam: {exam['title']}")
     flash("Results published successfully.", "success")
     return redirect("/faculty")
@@ -4518,15 +4910,16 @@ def delete_exam(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger"); return redirect("/faculty")
     # Archive instead of permanently deleting
     conn.execute("""UPDATE exams SET is_archived=1, archived_at=CURRENT_TIMESTAMP,
-                    archived_by=? WHERE id=? AND faculty_id=?""",
+                    archived_by=%s WHERE id=%s AND faculty_id=%s""",
                  (session["user_id"], exam_id, session["user_id"]))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Archived exam: {exam['title']}")
     flash(f"Exam \"{exam['title']}\" has been archived. You can restore it from the Archive Center.", "success")
     return redirect("/faculty")
@@ -4537,15 +4930,17 @@ def view_questions(exam_id):
     if g: return g
     conn = get_db()
     if session["role"] == "faculty":
-        exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                            (exam_id, session["user_id"])).fetchone()
+        exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
         if not exam:
+            conn.close()
             flash("Exam not found.", "danger"); return redirect("/faculty")
     else:
-        exam = conn.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
+        exam = conn.execute("SELECT * FROM exams WHERE id=%s", (exam_id,)).fetchone()
         if not exam:
+            conn.close()
             flash("Exam not found.", "danger"); return redirect("/admin")
-    questions = conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+    questions = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
+    conn.close()
     return render_template("faculty/view_questions.html", questions=questions, exam_id=exam_id, exam=exam)
 
 @app.route("/edit_questions/<exam_id>")
@@ -4553,15 +4948,17 @@ def edit_questions(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         return redirect("/faculty")
     # Only check launched field - published is for result publication, not launch state
     if exam["launched"] == 1:
+        conn.close()
         flash("Cannot edit questions of a launched exam.", "warning")
         return redirect(f"/view_questions/{exam_id}")
-    questions = conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+    questions = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
+    conn.close()
     return render_template("faculty/edit_questions.html", questions=questions, exam_id=exam_id)
 
 @app.route("/delete_question/<id>/<exam_id>")
@@ -4569,20 +4966,22 @@ def delete_question(id, exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger"); return redirect("/faculty")
     # Only check launched field - published is for result publication, not launch state
     if exam["launched"] == 1:
+        conn.close()
         flash("Cannot delete questions from a launched exam.", "warning")
         return redirect(f"/view_questions/{exam_id}")
-    conn.execute("DELETE FROM questions WHERE id=?", (id,))
+    conn.execute("DELETE FROM questions WHERE id=%s", (id,))
     conn.commit()
     # Recalculate total_marks
-    total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=?", (exam_id,)).fetchone()[0] or 0
-    conn.execute("UPDATE exams SET total_marks=? WHERE id=?", (total, exam_id))
+    total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0] or 0
+    conn.execute("UPDATE exams SET total_marks=%s WHERE id=%s", (total, exam_id))
     conn.commit()
+    conn.close()
     return redirect(f"/view_questions/{exam_id}")
 
 @app.route("/question_bank")
@@ -4590,12 +4989,12 @@ def question_bank():
     g = require_role("faculty"); 
     if g: return g
     conn = get_db(); q=request.args.get("q",""); cat=request.args.get("category","")
-    query = "SELECT * FROM question_bank WHERE faculty_id=?"; params=[session["user_id"]]
-    if q: query+=" AND question LIKE ?"; params.append(f"%{q}%")
-    if cat: query+=" AND category=?"; params.append(cat)
+    query = "SELECT * FROM question_bank WHERE faculty_id=%s"; params=[session["user_id"]]
+    if q: query+=" AND question LIKE %s"; params.append(f"%{q}%")
+    if cat: query+=" AND category=%s"; params.append(cat)
     questions  = conn.execute(query, params).fetchall()
-    categories = conn.execute("SELECT DISTINCT category FROM question_bank WHERE faculty_id=? AND category!=''",
-                              (session["user_id"],)).fetchall()
+    categories = conn.execute("SELECT DISTINCT category FROM question_bank WHERE faculty_id=%s AND category!=''", (session["user_id"],)).fetchall()
+    conn.close()
     return render_template("faculty/question_bank.html", questions=questions, categories=categories, q=q, sel_cat=cat)
 
 @app.route("/add_bank_question", methods=["GET","POST"])
@@ -4615,14 +5014,16 @@ def add_bank_question():
         elif correct_option == "o4":
             correct_answer = request.form["o4"]
         else:
+            conn.close()
             flash("Please select the correct answer.", "danger")
             return render_template("faculty/add_bank_question.html")
         
-        conn.execute("INSERT INTO question_bank(question,option1,option2,option3,option4,correct_answer,category,difficulty,faculty_id) VALUES(?,?,?,?,?,?,?,?,?)",
-                     (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
+        conn.execute("INSERT INTO question_bank(question,option1,option2,option3,option4,correct_answer,category,difficulty,faculty_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)", (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
                       request.form["o4"],correct_answer,request.form.get("category",""),
                       request.form.get("difficulty","medium"),session["user_id"]))
-        conn.commit(); flash("Question added.", "success"); return redirect("/question_bank")
+        conn.commit()
+        conn.close()
+        flash("Question added.", "success"); return redirect("/question_bank")
     return render_template("faculty/add_bank_question.html")
 
 @app.route("/edit_bank_question/<id>", methods=["GET","POST"])
@@ -4643,19 +5044,21 @@ def edit_bank_question(id):
             correct_answer = request.form["o4"]
         else:
             flash("Please select the correct answer.", "danger")
-            question = conn.execute("SELECT * FROM question_bank WHERE id=? AND faculty_id=?",
-                                    (id, session["user_id"])).fetchone()
+            question = conn.execute("SELECT * FROM question_bank WHERE id=%s AND faculty_id=%s", (id, session["user_id"])).fetchone()
+            conn.close()
             return render_template("faculty/edit_bank_question.html", question=question)
         
-        conn.execute("UPDATE question_bank SET question=?,option1=?,option2=?,option3=?,option4=?,correct_answer=?,category=?,difficulty=? WHERE id=?",
-                     (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
+        conn.execute("UPDATE question_bank SET question=%s,option1=%s,option2=%s,option3=%s,option4=%s,correct_answer=%s,category=%s,difficulty=%s WHERE id=%s", (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
                       request.form["o4"],correct_answer,request.form.get("category",""),
                       request.form.get("difficulty","medium"),id))
-        conn.commit(); flash("Question updated.", "success"); return redirect("/question_bank")
-    question = conn.execute("SELECT * FROM question_bank WHERE id=? AND faculty_id=?",
-                            (id, session["user_id"])).fetchone()
+        conn.commit()
+        conn.close()
+        flash("Question updated.", "success"); return redirect("/question_bank")
+    question = conn.execute("SELECT * FROM question_bank WHERE id=%s AND faculty_id=%s", (id, session["user_id"])).fetchone()
     if not question:
+        conn.close()
         flash("Question not found.", "danger"); return redirect("/question_bank")
+    conn.close()
     return render_template("faculty/edit_bank_question.html", question=question)
 
 @app.route("/delete_bank_question/<id>")
@@ -4663,11 +5066,12 @@ def delete_bank_question(id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    q = conn.execute("SELECT * FROM question_bank WHERE id=? AND faculty_id=?",
-                     (id, session["user_id"])).fetchone()
+    q = conn.execute("SELECT * FROM question_bank WHERE id=%s AND faculty_id=%s", (id, session["user_id"])).fetchone()
     if not q:
+        conn.close()
         flash("Question not found.", "danger"); return redirect("/question_bank")
-    conn.execute("DELETE FROM question_bank WHERE id=?", (id,)); conn.commit()
+    conn.execute("DELETE FROM question_bank WHERE id=%s", (id,)); conn.commit()
+    conn.close()
     flash("Question deleted.", "success"); return redirect("/question_bank")
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -4689,7 +5093,7 @@ def student():
         FROM classrooms
         JOIN classroom_members ON classrooms.id = classroom_members.classroom_id
         JOIN users ON users.id = classrooms.faculty_id
-        WHERE classroom_members.student_id = ?
+        WHERE classroom_members.student_id = %s
         AND (classrooms.is_archived IS NULL OR classrooms.is_archived=0)
         ORDER BY classrooms.name
     """, (sid,)).fetchall()
@@ -4700,13 +5104,13 @@ def student():
         FROM exams
         JOIN classrooms ON exams.classroom_id = classrooms.id
         JOIN classroom_members ON classrooms.id = classroom_members.classroom_id
-        WHERE classroom_members.student_id = ? 
+        WHERE classroom_members.student_id = %s 
         AND exams.launched = 1
         AND (exams.is_archived IS NULL OR exams.is_archived=0)
         AND (classrooms.is_archived IS NULL OR classrooms.is_archived=0)
         AND NOT EXISTS (
             SELECT 1 FROM submissions 
-            WHERE submissions.student_id = ? AND submissions.exam_id = exams.id
+            WHERE submissions.student_id = %s AND submissions.exam_id = exams.id
         )
         ORDER BY exams.exam_date ASC
     """, (sid, sid)).fetchall()
@@ -4720,7 +5124,7 @@ def student():
         SELECT COUNT(*) FROM submissions s
         JOIN exams e ON e.id = s.exam_id
         JOIN users u ON u.id = s.student_id
-        WHERE s.student_id = ?
+        WHERE s.student_id = %s
         AND (e.is_archived IS NULL OR e.is_archived=0)
     """, (sid,)).fetchone()[0]
 
@@ -4730,7 +5134,7 @@ def student():
         SELECT s.score, s.exam_id
         FROM submissions s
         JOIN exams e ON e.id = s.exam_id
-        WHERE s.student_id=? AND s.result_published=1
+        WHERE s.student_id=%s AND s.result_published=1
         AND (e.is_archived IS NULL OR e.is_archived=0)
     """, (sid,)).fetchall()
 
@@ -4738,7 +5142,7 @@ def student():
         percentages = []
         for sub in published_subs:
             total_marks = conn.execute(
-                "SELECT SUM(marks) FROM questions WHERE exam_id=?", (sub["exam_id"],)
+                "SELECT SUM(marks) FROM questions WHERE exam_id=%s", (sub["exam_id"],)
             ).fetchone()[0]
             if total_marks and total_marks > 0:
                 percentages.append(round((sub["score"] / total_marks) * 100, 1))
@@ -4754,7 +5158,7 @@ def student():
         FROM submissions
         JOIN exams ON submissions.exam_id = exams.id
         JOIN classrooms ON exams.classroom_id = classrooms.id
-        WHERE submissions.student_id = ? AND submissions.result_published = 1
+        WHERE submissions.student_id = %s AND submissions.result_published = 1
         AND (exams.is_archived IS NULL OR exams.is_archived=0)
         AND (classrooms.is_archived IS NULL OR classrooms.is_archived=0)
         ORDER BY submissions.submitted_at DESC
@@ -4764,7 +5168,7 @@ def student():
     # Calculate percentage for each result
     recent_results_with_pct = []
     for r in recent_results:
-        total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=?", (r["exam_id"],)).fetchone()[0]
+        total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (r["exam_id"],)).fetchone()[0]
         # Convert to dict before adding fields (sqlite3.Row is immutable)
         r_dict = dict(r)
         if total and total > 0:
@@ -4773,6 +5177,7 @@ def student():
             r_dict["percentage"] = 0
         recent_results_with_pct.append(r_dict)
 
+    conn.close()
     return render_template("student/student_dashboard.html",
         available_exams=available_exams,
         upcoming_exams=upcoming_exams,
@@ -4799,7 +5204,7 @@ def student_analytics_page():
         JOIN exams ON exams.id=submissions.exam_id
         LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
         JOIN questions ON questions.exam_id=exams.id
-        WHERE submissions.student_id=? AND submissions.result_published=1
+        WHERE submissions.student_id=%s AND submissions.result_published=1
         GROUP BY exams.id
         ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
@@ -4844,6 +5249,7 @@ def student_analytics_page():
     
     subject_analytics.sort(key=lambda x: x["avg_pct"], reverse=True)
     
+    conn.close()
     return render_template("student/student_analytics.html",
                            total_exams=total_exams,
                            avg_score=avg_score,
@@ -4867,13 +5273,13 @@ def student_exams():
         JOIN classrooms ON exams.classroom_id = classrooms.id
         JOIN classroom_members ON classrooms.id = classroom_members.classroom_id
         JOIN users ON users.id = classrooms.faculty_id
-        WHERE classroom_members.student_id = ? 
+        WHERE classroom_members.student_id = %s 
         AND exams.launched = 1
         AND (exams.is_archived IS NULL OR exams.is_archived=0)
         AND (classrooms.is_archived IS NULL OR classrooms.is_archived=0)
         AND NOT EXISTS (
             SELECT 1 FROM submissions 
-            WHERE submissions.student_id = ? AND submissions.exam_id = exams.id
+            WHERE submissions.student_id = %s AND submissions.exam_id = exams.id
         )
         ORDER BY exams.exam_date ASC
     """, (sid, sid)).fetchall()
@@ -4889,12 +5295,13 @@ def student_exams():
         JOIN classrooms ON exams.classroom_id = classrooms.id
         JOIN classroom_members ON classrooms.id = classroom_members.classroom_id
         JOIN users ON users.id = classrooms.faculty_id
-        WHERE submissions.student_id = ? AND classroom_members.student_id = ?
+        WHERE submissions.student_id = %s AND classroom_members.student_id = %s
         AND (classrooms.is_archived IS NULL OR classrooms.is_archived=0)
         AND (exams.is_archived IS NULL OR exams.is_archived=0)
         ORDER BY submissions.submitted_at DESC
     """, (sid, sid)).fetchall()
     
+    conn.close()
     return render_template("student/student_exams.html",
                            available_exams=available_exams,
                            completed_exams=completed_exams)
@@ -4907,10 +5314,11 @@ def student_classroom_detail(classroom_id):
     # Check if student is member of this classroom
     membership = conn.execute("""
         SELECT * FROM classroom_members 
-        WHERE classroom_id=? AND student_id=?
+        WHERE classroom_id=%s AND student_id=%s
     """, (classroom_id, sid)).fetchone()
     
     if not membership:
+        conn.close()
         flash("You are not a member of this classroom.", "danger")
         return redirect("/student/classrooms")
     
@@ -4919,10 +5327,11 @@ def student_classroom_detail(classroom_id):
         SELECT classrooms.*, users.name as faculty_name, users.email as faculty_email
         FROM classrooms
         JOIN users ON users.id = classrooms.faculty_id
-        WHERE classrooms.id = ?
+        WHERE classrooms.id = %s
     """, (classroom_id,)).fetchone()
     
     if not classroom:
+        conn.close()
         flash("Classroom not found.", "danger")
         return redirect("/student/classrooms")
     
@@ -4936,8 +5345,8 @@ def student_classroom_detail(classroom_id):
                student_submissions.submitted_at as student_submitted_at
         FROM exams
         LEFT JOIN submissions ON submissions.exam_id = exams.id
-        LEFT JOIN submissions as student_submissions ON student_submissions.exam_id = exams.id AND student_submissions.student_id = ?
-        WHERE exams.classroom_id = ?
+        LEFT JOIN submissions as student_submissions ON student_submissions.exam_id = exams.id AND student_submissions.student_id = %s
+        WHERE exams.classroom_id = %s
         GROUP BY exams.id
         ORDER BY exams.exam_date DESC
     """, (sid, classroom_id)).fetchall()
@@ -4947,15 +5356,16 @@ def student_classroom_detail(classroom_id):
         SELECT submissions.*, exams.title as exam_title, exams.exam_date
         FROM submissions
         JOIN exams ON exams.id = submissions.exam_id
-        WHERE submissions.student_id = ? AND exams.classroom_id = ?
+        WHERE submissions.student_id = %s AND exams.classroom_id = %s
         ORDER BY submissions.submitted_at DESC
     """, (sid, classroom_id)).fetchall()
     
     # Get student count in classroom
     student_count = conn.execute("""
-        SELECT COUNT(*) FROM classroom_members WHERE classroom_id = ?
+        SELECT COUNT(*) FROM classroom_members WHERE classroom_id = %s
     """, (classroom_id,)).fetchone()[0]
     
+    conn.close()
     return render_template("student/student_classroom_detail.html",
                            classroom=classroom,
                            exams=exams,
@@ -4966,14 +5376,17 @@ def student_classroom_detail(classroom_id):
 def exam_instructions(exam_id):
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND launched=1", (exam_id,)).fetchone()
-    if not exam: return redirect("/student")
-    q_count = conn.execute("SELECT COUNT(*) FROM questions WHERE exam_id=?", (exam_id,)).fetchone()[0]
-    questions = conn.execute("SELECT marks FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND launched=1", (exam_id,)).fetchone()
+    if not exam:
+        conn.close()
+        return redirect("/student")
+    q_count = conn.execute("SELECT COUNT(*) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0]
+    questions = conn.execute("SELECT marks FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
     total_marks = sum(q["marks"] or 1 for q in questions)
-    if conn.execute("SELECT id FROM submissions WHERE student_id=? AND exam_id=?",
-                    (session["user_id"],exam_id)).fetchone():
+    if conn.execute("SELECT id FROM submissions WHERE student_id=%s AND exam_id=%s", (session["user_id"],exam_id)).fetchone():
+        conn.close()
         return redirect(f"/view_result/{exam_id}")
+    conn.close()
     log_activity(session["user_id"], f"Started exam: {exam['title']}")
     return render_template("student/exam_instructions.html", exam=exam, q_count=q_count, total_marks=total_marks)
 
@@ -4983,8 +5396,9 @@ def attempt_exam(exam_id):
     conn = get_db(); sid = session["user_id"]
     
     # Check if student already submitted this exam
-    existing_submission = conn.execute("SELECT * FROM submissions WHERE student_id=? AND exam_id=?", (sid,exam_id)).fetchone()
+    existing_submission = conn.execute("SELECT * FROM submissions WHERE student_id=%s AND exam_id=%s", (sid,exam_id)).fetchone()
     if existing_submission:
+        conn.close()
         # Check if result is published
         if existing_submission.get("result_published") == 1:
             flash("You have already completed this exam.", "info")
@@ -4993,12 +5407,14 @@ def attempt_exam(exam_id):
             flash("You have already completed this exam. Result pending.", "info")
             return redirect("/student/exams")
     
-    exam = conn.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
-    if not exam or exam["launched"]!=1: return redirect("/student")
-    questions_raw = conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s", (exam_id,)).fetchone()
+    if not exam or exam["launched"]!=1:
+        conn.close()
+        return redirect("/student")
+    questions_raw = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
     
     # Check for in-progress attempt to restore
-    saved_attempt = conn.execute("SELECT * FROM exam_attempts WHERE student_id=? AND exam_id=?", (sid,exam_id)).fetchone()
+    saved_attempt = conn.execute("SELECT * FROM exam_attempts WHERE student_id=%s AND exam_id=%s", (sid,exam_id)).fetchone()
     saved_answers = {}
     current_question = 0
     remaining_time = 0
@@ -5015,6 +5431,7 @@ def attempt_exam(exam_id):
     if request.method == "POST":
         # Backend validation: ensure student_id and exam_id are valid before creating attempt
         if not exam or exam["id"] != int(exam_id):
+            conn.close()
             flash("Invalid exam.", "danger")
             return redirect("/student/exams")
         
@@ -5022,20 +5439,18 @@ def attempt_exam(exam_id):
         tab_switches = 0
         try: tab_switches = max(0, int(request.form.get("tab_switches", 0)))
         except: pass
-        conn.execute("INSERT INTO submissions(student_id,exam_id,score,tab_switches,result_published,submitted_at) VALUES(?,?,?,?,0,?)",
-                     (sid, exam_id, score, tab_switches, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
+        conn.execute("INSERT INTO submissions(student_id,exam_id,score,tab_switches,result_published,submitted_at) VALUES(%s,%s,%s,%s,0,%s)", (sid, exam_id, score, tab_switches, datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
-        sub_id = conn.execute("SELECT id FROM submissions WHERE student_id=? AND exam_id=? ORDER BY id DESC LIMIT 1",
-                              (sid,exam_id)).fetchone()["id"]
+        sub_id = conn.execute("SELECT id FROM submissions WHERE student_id=%s AND exam_id=%s ORDER BY id DESC LIMIT 1", (sid,exam_id)).fetchone()["id"]
         for q in questions_raw:
             ans = request.form.get(str(q["id"]), "")
-            conn.execute("INSERT INTO submission_answers(submission_id,question_id,student_answer) VALUES(?,?,?)",
-                         (sub_id, q["id"], ans))
+            conn.execute("INSERT INTO submission_answers(submission_id,question_id,student_answer) VALUES(%s,%s,%s)", (sub_id, q["id"], ans))
         conn.commit()
         
         # Clean up in-progress attempt after successful submission
-        conn.execute("DELETE FROM exam_attempts WHERE student_id=? AND exam_id=?", (sid, exam_id))
+        conn.execute("DELETE FROM exam_attempts WHERE student_id=%s AND exam_id=%s", (sid, exam_id))
         conn.commit()
+        conn.close()
         
         if tab_switches > 0:
             log_activity(sid, f"Submitted exam id={exam_id} score={score} tab_switches={tab_switches}")
@@ -5056,6 +5471,7 @@ def attempt_exam(exam_id):
         shuffled.append({"id":q["id"],"question":q["question"],"difficulty":q["difficulty"],
             "correct_answer":q["correct_answer"],
             "option1":opts[0],"option2":opts[1],"option3":opts[2],"option4":opts[3]})
+    conn.close()
     return render_template("student/attempt_exam.html", questions=shuffled, exam=exam, 
                            saved_answers=saved_answers, current_question=current_question, 
                            remaining_time=remaining_time)
@@ -5078,8 +5494,9 @@ def auto_save_exam():
     sid = session["user_id"]
     
     # Check if exam is still valid (not submitted)
-    existing_submission = conn.execute("SELECT id FROM submissions WHERE student_id=? AND exam_id=?", (sid, exam_id)).fetchone()
+    existing_submission = conn.execute("SELECT id FROM submissions WHERE student_id=%s AND exam_id=%s", (sid, exam_id)).fetchone()
     if existing_submission:
+        conn.close()
         return jsonify({"success": False, "error": "Exam already submitted"}), 400
     
     # Upsert exam attempt record
@@ -5087,7 +5504,7 @@ def auto_save_exam():
     try:
         conn.execute("""
             INSERT INTO exam_attempts(student_id, exam_id, current_question, remaining_time, answers, last_saved)
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s)
             ON CONFLICT(student_id, exam_id) DO UPDATE SET
                 current_question = excluded.current_question,
                 remaining_time = excluded.remaining_time,
@@ -5095,8 +5512,10 @@ def auto_save_exam():
                 last_saved = excluded.last_saved
         """, (sid, exam_id, current_question, remaining_time, json.dumps(answers), datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
         conn.commit()
+        conn.close()
         return jsonify({"success": True})
     except Exception as e:
+        conn.close()
         app.logger.error(f"Auto-save failed: {e}")
         return jsonify({"success": False, "error": str(e)}), 500
 
@@ -5106,18 +5525,22 @@ def view_result(exam_id):
     g = check_profile_complete()
     if g: return g
     conn = get_db(); sid = session["user_id"]
-    result = conn.execute("SELECT * FROM submissions WHERE student_id=? AND exam_id=?", (sid,exam_id)).fetchone()
-    if not result: return redirect("/student")
+    result = conn.execute("SELECT * FROM submissions WHERE student_id=%s AND exam_id=%s", (sid,exam_id)).fetchone()
+    if not result:
+        conn.close()
+        return redirect("/student")
     # Check if results are published
     if result["result_published"] == 0:
+        conn.close()
         return render_template("errors/results_not_published.html", exam_id=exam_id)
-    exam     = conn.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
-    student  = conn.execute("SELECT * FROM users WHERE id=?", (sid,)).fetchone()
-    questions= conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
-    faculty  = conn.execute("SELECT * FROM users WHERE id=?", (exam["faculty_id"],)).fetchone()
-    classroom= conn.execute("SELECT * FROM classrooms WHERE id=?", (exam["classroom_id"],)).fetchone()
+    exam     = conn.execute("SELECT * FROM exams WHERE id=%s", (exam_id,)).fetchone()
+    student  = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
+    questions= conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
+    faculty  = conn.execute("SELECT * FROM users WHERE id=%s", (exam["faculty_id"],)).fetchone()
+    classroom= conn.execute("SELECT * FROM classrooms WHERE id=%s", (exam["classroom_id"],)).fetchone()
     total    = sum(q["marks"] or 1 for q in questions)
     generated_date = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    conn.close()
     log_activity(sid, f"Viewed result for exam: {exam['title']}")
     return render_template("student/results.html", score=result["score"], total=total,
         student=student, exam=exam, questions=questions, result=result,
@@ -5128,16 +5551,17 @@ def publish_results(exam_id):
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    exam = conn.execute("SELECT * FROM exams WHERE id=? AND faculty_id=?",
-                        (exam_id, session["user_id"])).fetchone()
+    exam = conn.execute("SELECT * FROM exams WHERE id=%s AND faculty_id=%s", (exam_id, session["user_id"])).fetchone()
     if not exam:
+        conn.close()
         flash("Exam not found.", "danger")
         return redirect("/faculty")
     
     # Check if there are pending submissions
-    pending_count = conn.execute("SELECT COUNT(*) FROM submissions WHERE exam_id=? AND result_published=0", (exam_id,)).fetchone()[0]
+    pending_count = conn.execute("SELECT COUNT(*) FROM submissions WHERE exam_id=%s AND result_published=0", (exam_id,)).fetchone()[0]
     
     if pending_count == 0:
+        conn.close()
         flash("No pending results to publish.", "warning")
         return redirect("/faculty/results")
     
@@ -5146,12 +5570,13 @@ def publish_results(exam_id):
         UPDATE submissions 
         SET result_published = 1,
             published_at = CURRENT_TIMESTAMP
-        WHERE exam_id = ? AND result_published = 0
+        WHERE exam_id = %s AND result_published = 0
     """, (exam_id,))
     
     # Keep exam-level published flag for backward compatibility
-    conn.execute("UPDATE exams SET published=1 WHERE id=?", (exam_id,))
+    conn.execute("UPDATE exams SET published=1 WHERE id=%s", (exam_id,))
     conn.commit()
+    conn.close()
     log_activity(session["user_id"], f"Published {pending_count} pending results for exam: {exam['title']}")
     flash(f"Results published successfully for {pending_count} submission(s).", "success")
     return redirect("/faculty/results")
@@ -5161,17 +5586,18 @@ def publish_results(exam_id):
 def view_validation(exam_id):
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     conn = get_db(); sid = session["user_id"]
-    result = conn.execute("SELECT * FROM submissions WHERE student_id=? AND exam_id=?",
-                          (sid, exam_id)).fetchone()
-    if not result: return redirect("/student")
-    exam     = conn.execute("SELECT * FROM exams WHERE id=?", (exam_id,)).fetchone()
-    student  = conn.execute("SELECT * FROM users WHERE id=?", (sid,)).fetchone()
-    questions= conn.execute("SELECT * FROM questions WHERE exam_id=?", (exam_id,)).fetchall()
+    result = conn.execute("SELECT * FROM submissions WHERE student_id=%s AND exam_id=%s", (sid, exam_id)).fetchone()
+    if not result:
+        conn.close()
+        return redirect("/student")
+    exam     = conn.execute("SELECT * FROM exams WHERE id=%s", (exam_id,)).fetchone()
+    student  = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
+    questions= conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
     # Fetch student answers for this submission
-    answers  = conn.execute("SELECT * FROM submission_answers WHERE submission_id=?",
-                            (result["id"],)).fetchall()
+    answers  = conn.execute("SELECT * FROM submission_answers WHERE submission_id=%s", (result["id"],)).fetchall()
     answer_map = {a["question_id"]: a["student_answer"] for a in answers}
     total    = len(questions)
+    conn.close()
     return render_template("errors/validation.html",
         result=result, exam=exam, student=student,
         questions=questions, answer_map=answer_map, total=total)
@@ -5204,11 +5630,11 @@ def faculty_analytics():
         LEFT JOIN submissions ON submissions.exam_id=exams.id
         LEFT JOIN questions   ON questions.exam_id=exams.id
         LEFT JOIN classrooms  ON classrooms.id=exams.classroom_id
-        WHERE exams.faculty_id=?"""
+        WHERE exams.faculty_id=%s"""
     ep = [fid]
-    if ef: eq += " AND exams.id=?";            ep.append(ef)
-    if cf: eq += " AND exams.classroom_id=?";  ep.append(cf)
-    if sf: eq += " AND exams.subject=?";       ep.append(sf)
+    if ef: eq += " AND exams.id=%s";            ep.append(ef)
+    if cf: eq += " AND exams.classroom_id=%s";  ep.append(cf)
+    if sf: eq += " AND exams.subject=%s";       ep.append(sf)
     eq += " GROUP BY exams.id ORDER BY exams.exam_date DESC"
     exam_stats = conn.execute(eq, ep).fetchall()
 
@@ -5220,10 +5646,10 @@ def faculty_analytics():
                AVG(CAST(submissions.score AS FLOAT)/NULLIF(
                    (SELECT COUNT(*) FROM questions WHERE exam_id=exams.id),0)*100) as avg_pct
         FROM exams LEFT JOIN submissions ON submissions.exam_id=exams.id
-        WHERE exams.faculty_id=? AND exams.subject != ''"""
+        WHERE exams.faculty_id=%s AND exams.subject != ''"""
     subject_params = [fid]
-    if ef: subject_query += " AND exams.id=?"; subject_params.append(ef)
-    if cf: subject_query += " AND exams.classroom_id=?"; subject_params.append(cf)
+    if ef: subject_query += " AND exams.id=%s"; subject_params.append(ef)
+    if cf: subject_query += " AND exams.classroom_id=%s"; subject_params.append(cf)
     subject_query += " GROUP BY exams.subject ORDER BY avg_pct DESC"
     subject_stats = conn.execute(subject_query, subject_params).fetchall()
 
@@ -5237,10 +5663,10 @@ def faculty_analytics():
         FROM classrooms
         LEFT JOIN exams       ON exams.classroom_id=classrooms.id
         LEFT JOIN submissions ON submissions.exam_id=exams.id
-        WHERE classrooms.faculty_id=?"""
+        WHERE classrooms.faculty_id=%s"""
     classroom_params = [fid]
-    if ef: classroom_query += " AND exams.id=?"; classroom_params.append(ef)
-    if sf: classroom_query += " AND exams.subject=?"; classroom_params.append(sf)
+    if ef: classroom_query += " AND exams.id=%s"; classroom_params.append(ef)
+    if sf: classroom_query += " AND exams.subject=%s"; classroom_params.append(sf)
     classroom_query += " GROUP BY classrooms.id ORDER BY classroom_name"
     classroom_stats = conn.execute(classroom_query, classroom_params).fetchall()
 
@@ -5254,11 +5680,11 @@ def faculty_analytics():
         FROM submissions
         JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
-        WHERE exams.faculty_id=?"""
+        WHERE exams.faculty_id=%s"""
     top_params = [fid]
-    if ef: top_query += " AND exams.id=?"; top_params.append(ef)
-    if cf: top_query += " AND exams.classroom_id=?"; top_params.append(cf)
-    if sf: top_query += " AND exams.subject=?"; top_params.append(sf)
+    if ef: top_query += " AND exams.id=%s"; top_params.append(ef)
+    if cf: top_query += " AND exams.classroom_id=%s"; top_params.append(cf)
+    if sf: top_query += " AND exams.subject=%s"; top_params.append(sf)
     top_query += " GROUP BY users.id ORDER BY avg_pct DESC LIMIT 5"
     top_students = conn.execute(top_query, top_params).fetchall()
 
@@ -5272,19 +5698,20 @@ def faculty_analytics():
         FROM submissions
         JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
-        WHERE exams.faculty_id=?"""
+        WHERE exams.faculty_id=%s"""
     low_params = [fid]
-    if ef: low_query += " AND exams.id=?"; low_params.append(ef)
-    if cf: low_query += " AND exams.classroom_id=?"; low_params.append(cf)
-    if sf: low_query += " AND exams.subject=?"; low_params.append(sf)
+    if ef: low_query += " AND exams.id=%s"; low_params.append(ef)
+    if cf: low_query += " AND exams.classroom_id=%s"; low_params.append(cf)
+    if sf: low_query += " AND exams.subject=%s"; low_params.append(sf)
     low_query += " GROUP BY users.id ORDER BY avg_pct ASC LIMIT 5"
     low_students = conn.execute(low_query, low_params).fetchall()
 
     # Filter dropdowns
-    my_exams      = conn.execute("SELECT id,title FROM exams WHERE faculty_id=? ORDER BY title", (fid,)).fetchall()
-    my_classrooms = conn.execute("SELECT id,name FROM classrooms WHERE faculty_id=? AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (fid,)).fetchall()
-    subjects      = conn.execute("SELECT DISTINCT subject FROM exams WHERE faculty_id=? AND subject!='' ORDER BY subject", (fid,)).fetchall()
+    my_exams      = conn.execute("SELECT id,title FROM exams WHERE faculty_id=%s ORDER BY title", (fid,)).fetchall()
+    my_classrooms = conn.execute("SELECT id,name FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0) ORDER BY name", (fid,)).fetchall()
+    subjects      = conn.execute("SELECT DISTINCT subject FROM exams WHERE faculty_id=%s AND subject!='' ORDER BY subject", (fid,)).fetchall()
 
+    conn.close()
     return render_template("faculty/faculty_analytics.html",
         exam_stats=exam_stats, subject_stats=subject_stats,
         classroom_stats=classroom_stats, top_students=top_students,
@@ -5314,14 +5741,15 @@ def faculty_analytics_export():
         FROM exams
         LEFT JOIN submissions ON submissions.exam_id=exams.id
         LEFT JOIN questions ON questions.exam_id=exams.id
-        WHERE exams.faculty_id=?"""
+        WHERE exams.faculty_id=%s"""
     params = [fid]
-    if ef: query += " AND exams.id=?"; params.append(ef)
-    if cf: query += " AND exams.classroom_id=?"; params.append(cf)
-    if sf: query += " AND exams.subject=?"; params.append(sf)
+    if ef: query += " AND exams.id=%s"; params.append(ef)
+    if cf: query += " AND exams.classroom_id=%s"; params.append(cf)
+    if sf: query += " AND exams.subject=%s"; params.append(sf)
     query += " GROUP BY exams.id ORDER BY exams.exam_date DESC"
     
     rows = conn.execute(query, params).fetchall()
+    conn.close()
     out = io.StringIO(); w = csv.writer(out)
     w.writerow(["Exam","Subject","Date","Attempts","Avg Score","Max","Min","Total Marks","Avg %"])
     for r in rows:
@@ -5362,13 +5790,14 @@ def faculty_analytics_export_pdf():
             FROM exams
             LEFT JOIN submissions ON submissions.exam_id=exams.id
             LEFT JOIN questions ON questions.exam_id=exams.id
-            WHERE exams.faculty_id=?"""
+            WHERE exams.faculty_id=%s"""
         params = [fid]
-        if ef: query += " AND exams.id=?"; params.append(ef)
-        if cf: query += " AND exams.classroom_id=?"; params.append(cf)
-        if sf: query += " AND exams.subject=?"; params.append(sf)
+        if ef: query += " AND exams.id=%s"; params.append(ef)
+        if cf: query += " AND exams.classroom_id=%s"; params.append(cf)
+        if sf: query += " AND exams.subject=%s"; params.append(sf)
         query += " GROUP BY exams.id ORDER BY exams.exam_date DESC"
         rows = conn.execute(query, params).fetchall()
+        conn.close()
         total_attempts = sum(r["attempts"] or 0 for r in rows)
 
         response = io.BytesIO()
@@ -5540,10 +5969,11 @@ def student_results():
         JOIN exams ON exams.id=submissions.exam_id
         JOIN questions ON questions.exam_id=exams.id
         JOIN users as faculty ON faculty.id=exams.faculty_id
-        WHERE submissions.student_id=?
+        WHERE submissions.student_id=%s
         GROUP BY exams.id ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
-    student = conn.execute("SELECT * FROM users WHERE id=?", (sid,)).fetchone()
+    student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
+    conn.close()
     pass_count_val = sum(1 for r in results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50) and r["result_published"] == 1)
     fail_count_val = sum(1 for r in results if r["total"] and not is_pass(r["score"], r["total"], r["pass_percentage"] or 50) and r["result_published"] == 1)
     return render_template("student/student_results.html", results=results, student=student,
@@ -5565,10 +5995,11 @@ def student_results_export():
         JOIN exams ON exams.id=submissions.exam_id
         JOIN questions ON questions.exam_id=exams.id
         JOIN users as faculty ON faculty.id=exams.faculty_id
-        WHERE submissions.student_id=?
+        WHERE submissions.student_id=%s
         GROUP BY exams.id ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
-    student = conn.execute("SELECT * FROM users WHERE id=?", (sid,)).fetchone()
+    student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
+    conn.close()
     out = io.StringIO(); w = csv.writer(out)
     w.writerow([f"# Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
     w.writerow(["Student","Exam","Subject","Faculty","Date","Score","Total","Percentage","Result","Submitted At"])
@@ -5618,11 +6049,12 @@ def student_export_pdf():
             JOIN exams ON exams.id=submissions.exam_id
             JOIN questions ON questions.exam_id=exams.id
             JOIN users as faculty ON faculty.id=exams.faculty_id
-            WHERE submissions.student_id=?
+            WHERE submissions.student_id=%s
             GROUP BY exams.id ORDER BY submissions.submitted_at DESC
         """, (sid,)).fetchall()
-        student = conn.execute("SELECT * FROM users WHERE id=?", (sid,)).fetchone()
-        
+        student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
+        conn.close()
+
         # Calculate summary stats
         total_count = len(results)
         published_results = [r for r in results if r["result_published"] == 1]
@@ -5811,14 +6243,14 @@ def faculty_integrity():
         JOIN users    ON users.id    = submissions.student_id
         JOIN exams    ON exams.id    = submissions.exam_id
         JOIN questions ON questions.exam_id = exams.id
-        WHERE exams.faculty_id=? AND submissions.tab_switches > 0"""
+        WHERE exams.faculty_id=%s AND submissions.tab_switches > 0"""
     params = [fid]
     if ef:
-        query += " AND exams.id=?"; params.append(ef)
+        query += " AND exams.id=%s"; params.append(ef)
     query += " GROUP BY submissions.id ORDER BY submissions.tab_switches DESC"
     flags = conn.execute(query, params).fetchall()
-    my_exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=? ORDER BY title",
-                            (fid,)).fetchall()
+    my_exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=%s ORDER BY title", (fid,)).fetchall()
+    conn.close()
     return render_template("faculty/faculty_integrity.html", flags=flags,
                            my_exams=my_exams, sel_exam=ef)
 
@@ -5840,37 +6272,42 @@ def faculty_profile():
         current_password = request.form.get("current_password", "").strip()
         
         if not name or not email:
+            conn.close()
             flash("Name and email are required.", "danger")
             return redirect("/faculty/profile")
-        
+
         if "@" not in email:
+            conn.close()
             flash("Invalid email format.", "danger")
             return redirect("/faculty/profile")
         
         # Get current user data to check if email is being changed
-        current_user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        current_user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         current_email = current_user["email"] if current_user else ""
         
         # If email is being changed, require password verification
         if email != current_email:
             if not current_password:
+                conn.close()
                 flash("Current password is required to change email.", "danger")
                 return redirect("/faculty/profile")
-            
+
             # Verify current password
             if not check_password_hash(current_user["password"], current_password):
+                conn.close()
                 flash("Incorrect password. Email not updated.", "danger")
                 return redirect("/faculty/profile")
         
         try:
             conn.execute("""
-                UPDATE users SET name=?, email=?, phone=?, date_of_birth=?, gender=?,
-                faculty_id=?, designation=?, subject=?, last_profile_update=?
-                WHERE id=?
+                UPDATE users SET name=%s, email=%s, phone=%s, date_of_birth=%s, gender=%s,
+                faculty_id=%s, designation=%s, subject=%s, last_profile_update=%s
+                WHERE id=%s
             """, (name, email, phone, date_of_birth, gender, faculty_id_field, designation,
                   subject, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), session["user_id"]))
             conn.commit()
         except Exception as db_err:
+            conn.close()
             error_msg = str(db_err)
             if "UNIQUE" in error_msg.upper():
                 flash("That email address is already in use by another account.", "danger")
@@ -5878,23 +6315,25 @@ def faculty_profile():
                 flash(f"Profile update failed: {error_msg}", "danger")
             return redirect("/faculty/profile")
         # Refresh session from database
-        updated_user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        updated_user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         if updated_user:
             session["name"] = updated_user["name"]
             session["email"] = updated_user["email"]
             if "phone" in updated_user.keys() and updated_user["phone"]:
                 session["phone"] = updated_user["phone"]
         else:
+            conn.close()
             flash("Profile update failed: user record not found.", "danger")
             return redirect("/faculty/profile")
-        
+
+        conn.close()
         if email != current_email:
             flash("Email updated successfully. Please use the new email for future logins.", "success")
         else:
             flash("Profile updated successfully.", "success")
         return redirect("/faculty/profile")
     
-    user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     if user:
         user = dict(user)
         # Sync session with database profile picture
@@ -5902,6 +6341,7 @@ def faculty_profile():
             session["profile_pic"] = user["profile_picture"].replace("/static/", "", 1) if user["profile_picture"].startswith("/static/") else user["profile_picture"]
         else:
             session["profile_pic"] = ""
+    conn.close()
     return render_template("faculty/faculty_profile.html", user=user)
 
 
@@ -5943,12 +6383,12 @@ def faculty_upload_picture():
         
         # Update database (use profile_picture column for consistency)
         conn = get_db()
-        conn.execute("UPDATE users SET profile_picture=? WHERE id=?", 
-                   (f"/static/uploads/{filename}", session["user_id"]))
+        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (f"/static/uploads/{filename}", session["user_id"]))
         conn.commit()
+        conn.close()
         session["profile_pic"] = f"uploads/{filename}"
         log_activity(session["user_id"], "Updated profile picture")
-        
+
         return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": f"/static/uploads/{filename}"})
     except Exception as e:
         app.logger.exception("Faculty profile upload error")
@@ -5960,7 +6400,7 @@ def faculty_remove_picture():
     g = require_role("faculty")
     if g: return g
     conn = get_db()
-    user = conn.execute("SELECT profile_picture FROM users WHERE id=?", (session["user_id"],)).fetchone()
+    user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
         # Delete file from disk
@@ -5975,13 +6415,15 @@ def faculty_remove_picture():
             os.remove(filepath)
         
         # Update database (use profile_picture column for consistency)
-        conn.execute("UPDATE users SET profile_picture='' WHERE id=?", (session["user_id"]))
+        conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"]))
         conn.commit()
+        conn.close()
         session["profile_pic"] = ""
         flash("Profile picture removed.", "success")
     else:
+        conn.close()
         flash("No profile picture to remove.", "warning")
-    
+
     return redirect("/faculty/profile")
 
 
@@ -5995,7 +6437,7 @@ def faculty_change_password():
         confirm_password = request.form.get("confirm_password", "")
         
         conn = get_db()
-        user = conn.execute("SELECT * FROM users WHERE id=?", (session["user_id"],)).fetchone()
+        user = conn.execute("SELECT * FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         
         if not check_password_hash(user["password"], current_password):
             flash("Current password is incorrect.", "danger")
@@ -6009,9 +6451,9 @@ def faculty_change_password():
             flash("Password must be at least 6 characters.", "warning")
             return redirect("/faculty/change_password")
         
-        conn.execute("UPDATE users SET password=? WHERE id=?",
-                     (generate_password_hash(new_password), session["user_id"]))
+        conn.execute("UPDATE users SET password=%s WHERE id=%s", (generate_password_hash(new_password), session["user_id"]))
         conn.commit()
+        conn.close()
         flash("Password updated successfully.", "success")
         return redirect("/faculty/profile")
     
