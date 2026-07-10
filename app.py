@@ -23,7 +23,7 @@ DATABASE_URL = os.environ.get("DATABASE_URL")
 print(f"[STARTUP] DATABASE_URL value: {DATABASE_URL}")
 if DATABASE_URL:
     print(f"[STARTUP] DATABASE_URL detected (PostgreSQL mode enabled)")
-    print(f"[STARTUP] DATABASE_URL prefix: {DATABASE_URL[:20]}..." if len(DATABASE_URL) > 20 else f"[STARTUP] DATABASE_URL: {DATABASE_URL}")
+    print(f"[STARTUP] DATABASE_URL prefix: {DATABASE_URL[:40]}..." if len(DATABASE_URL) > 40 else f"[STARTUP] DATABASE_URL: {DATABASE_URL}")
 else:
     print("[STARTUP] DATABASE_URL not detected (SQLite mode enabled)")
 
@@ -132,7 +132,7 @@ class DatabaseConnection:
         try:
             if self.is_postgres:
                 print("[STARTUP] Connecting to PostgreSQL...")
-                self.conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+                self.conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor, connect_timeout=10)
                 print("[STARTUP] PostgreSQL connection established successfully")
             else:
                 print("[STARTUP] Connecting to SQLite...")
@@ -153,7 +153,7 @@ class DatabaseConnection:
         """Execute a query with parameters. Handles parameter style differences."""
         if params is None:
             params = ()
-        
+
         if self.is_postgres:
             # PostgreSQL uses %s placeholders
             cursor = self.conn.cursor()
@@ -165,6 +165,17 @@ class DatabaseConnection:
             cursor = self.conn.cursor()
             cursor.execute(sqlite_query, params)
             return cursor
+
+    def last_insert_id(self):
+        """Get the last inserted ID for the current connection."""
+        if self.is_postgres:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT lastval()")
+            return cursor.fetchone()['lastval']
+        else:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT last_insert_rowid()")
+            return cursor.fetchone()[0]
     
     def executemany(self, query, params):
         """Execute multiple queries with parameters."""
@@ -1223,18 +1234,27 @@ def home(): return render_template("auth/login.html")
 
 @app.route("/login", methods=["POST"])
 def login():
+    print(f"[LOGIN] Login attempt received")
     email = request.form["email"]; password = request.form["password"]; role = request.form["role"]
+    print(f"[LOGIN] Email: {email}, Role: {role}")
+    print(f"[LOGIN] Getting database connection...")
     conn = get_db()
+    print(f"[LOGIN] Database connection established")
+    print(f"[LOGIN] Executing user query...")
     user = conn.execute("SELECT * FROM users WHERE email=%s AND role=%s", (email,role)).fetchone()
-    if not user: 
+    print(f"[LOGIN] User query completed, user found: {user is not None}")
+    if not user:
         conn.close()
         return render_template("auth/login.html", error="Invalid email or role")
-    if not check_password_hash(user["password"], password): 
+    print(f"[LOGIN] Checking password...")
+    if not check_password_hash(user["password"], password):
         conn.close()
         return render_template("auth/login.html", error="Incorrect password")
-    if user["approved"] == 0: 
+    print(f"[LOGIN] Password verified")
+    if user["approved"] == 0:
         conn.close()
         return render_template("auth/login.html", error="Account pending admin approval")
+    print(f"[LOGIN] Setting session variables...")
     session["user_id"] = user["id"]
     session["role"] = user["role"]
     session["name"] = user["name"]
@@ -1249,6 +1269,7 @@ def login():
     # Update last_login if column exists
     if "last_login" in user.keys():
         conn.execute("UPDATE users SET last_login=CURRENT_TIMESTAMP WHERE id=%s", (user["id"],))
+    print(f"[LOGIN] Logging activity...")
     log_activity(user["id"], "Logged in")
     browser_theme = request.cookies.get("es_theme")
     if browser_theme in ("light", "dark"):
@@ -1510,13 +1531,13 @@ def admin():
     g = require_role("admin"); 
     if g: return g
     conn = get_db()
-    students = conn.execute("SELECT COUNT(*) FROM users WHERE role='student'").fetchone()[0]
-    faculty  = conn.execute("SELECT COUNT(*) FROM users WHERE role='faculty'").fetchone()[0]
-    active_faculty = conn.execute("SELECT COUNT(*) FROM users WHERE role='faculty' AND approved=1").fetchone()[0]
-    pending_faculty = conn.execute("SELECT COUNT(*) FROM users WHERE role='faculty' AND approved=0").fetchone()[0]
-    exams    = conn.execute("SELECT COUNT(*) FROM exams").fetchone()[0]
-    total_classrooms = conn.execute("SELECT COUNT(*) FROM classrooms").fetchone()[0]
-    active_exams = conn.execute("SELECT COUNT(*) FROM exams WHERE published=1 AND launched=1").fetchone()[0]
+    students = conn.execute("SELECT COUNT(*) as count FROM users WHERE role='student'").fetchone()['count']
+    faculty  = conn.execute("SELECT COUNT(*) as count FROM users WHERE role='faculty'").fetchone()['count']
+    active_faculty = conn.execute("SELECT COUNT(*) as count FROM users WHERE role='faculty' AND approved=1").fetchone()['count']
+    pending_faculty = conn.execute("SELECT COUNT(*) as count FROM users WHERE role='faculty' AND approved=0").fetchone()['count']
+    exams    = conn.execute("SELECT COUNT(*) as count FROM exams").fetchone()['count']
+    total_classrooms = conn.execute("SELECT COUNT(*) as count FROM classrooms").fetchone()['count']
+    active_exams = conn.execute("SELECT COUNT(*) as count FROM exams WHERE published=1 AND launched=1").fetchone()['count']
     pending  = conn.execute("SELECT * FROM users WHERE role='faculty' AND approved=0").fetchall()
     
     # Faculty list with stats
@@ -1548,26 +1569,26 @@ def admin():
     try:
         # Total Submissions - count all valid submissions
         total_submissions = conn.execute("""
-            SELECT COUNT(*) FROM submissions s
+            SELECT COUNT(*) as count FROM submissions s
             JOIN users u ON u.id = s.student_id
             JOIN exams e ON e.id = s.exam_id
-        """).fetchone()[0]
+        """).fetchone()['count']
         
         # Pending Results - count unpublished submissions
         pending_results = conn.execute("""
-            SELECT COUNT(*) FROM submissions s
+            SELECT COUNT(*) as count FROM submissions s
             JOIN users u ON u.id = s.student_id
             JOIN exams e ON e.id = s.exam_id
             WHERE s.result_published=0
-        """).fetchone()[0]
+        """).fetchone()['count']
         
         # Published Results - count published submissions
         published_results = conn.execute("""
-            SELECT COUNT(*) FROM submissions s
+            SELECT COUNT(*) as count FROM submissions s
             JOIN users u ON u.id = s.student_id
             JOIN exams e ON e.id = s.exam_id
             WHERE s.result_published=1
-        """).fetchone()[0]
+        """).fetchone()['count']
         
         # Passed Students - count published results where percentage >= pass_percentage
         # First get exam total marks
@@ -2826,7 +2847,7 @@ def copy_exam_to_classroom(cid):
                  (f"Copy of {orig['title']}", session["user_id"], orig["duration"],
                   orig["exam_date"], orig["subject"], target_cid))
     conn.commit()
-    new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    new_id = conn.last_insert_id()
     # Copy questions only
     for q in conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall():
         conn.execute("""INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty)
@@ -3596,15 +3617,15 @@ def faculty():
         else:
             # Calculate submission-level stats (only valid records)
             total_submissions = conn.execute("""
-                SELECT COUNT(*) FROM submissions s
+                SELECT COUNT(*) as count FROM submissions s
                 JOIN users u ON u.id = s.student_id
                 WHERE s.exam_id=%s
-            """, (e["id"],)).fetchone()[0]
+            """, (e["id"],)).fetchone()['count']
             published_submissions = conn.execute("""
-                SELECT COUNT(*) FROM submissions s
+                SELECT COUNT(*) as count FROM submissions s
                 JOIN users u ON u.id = s.student_id
                 WHERE s.exam_id=%s AND s.result_published=1
-            """, (e["id"],)).fetchone()[0]
+            """, (e["id"],)).fetchone()['count']
             pending_submissions = total_submissions - published_submissions
             
             if total_submissions == 0:
@@ -3632,13 +3653,13 @@ def faculty():
     try:
         for c in my_classrooms:
             student_count = conn.execute("""
-                SELECT COUNT(*) FROM classroom_members cm
+                SELECT COUNT(*) as count FROM classroom_members cm
                 JOIN users u ON u.id = cm.student_id
                 WHERE cm.classroom_id=%s
-            """, (c["id"],)).fetchone()[0]
+            """, (c["id"],)).fetchone()['count']
             exam_count = conn.execute(
-                "SELECT COUNT(*) FROM exams WHERE classroom_id=%s AND faculty_id=%s", (c["id"], session["user_id"])
-            ).fetchone()[0]
+                "SELECT COUNT(*) as count FROM exams WHERE classroom_id=%s AND faculty_id=%s", (c["id"], session["user_id"])
+            ).fetchone()['count']
             classrooms_with_counts.append({
                 "classroom": c,
                 "student_count": student_count,
@@ -4698,7 +4719,7 @@ def copy_exam(exam_id):
         flash("Exam not found.", "danger"); return redirect("/faculty")
     conn.execute("INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id) VALUES(%s,%s,%s,%s,%s,%s)", (f"Copy of {orig['title']}",session["user_id"],orig["duration"],orig["exam_date"],orig["subject"],orig["classroom_id"]))
     conn.commit()
-    new_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+    new_id = conn.last_insert_id()
     for q in conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall():
         conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty) VALUES(%s,%s,%s,%s,%s,%s,%s,%s)", (new_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"]))
     conn.commit()
@@ -4735,10 +4756,10 @@ def create_exam():
             
             # Get statistics
             stats = {
-                'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
-                'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
-                'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
-                'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+                'total_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()['count'],
+                'published_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()['count'],
+                'draft_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()['count'],
+                'classrooms': conn.execute("SELECT COUNT(*) as count FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()['count']
             }
             conn.close()
             
@@ -4762,10 +4783,10 @@ def create_exam():
                 
                 # Get statistics
                 stats = {
-                    'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
-                    'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
-                    'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
-                    'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+                    'total_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()['count'],
+                    'published_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()['count'],
+                    'draft_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()['count'],
+                    'classrooms': conn.execute("SELECT COUNT(*) as count FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()['count']
                 }
                 conn.close()
                 
@@ -4785,10 +4806,10 @@ def create_exam():
             
             # Get statistics
             stats = {
-                'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
-                'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
-                'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
-                'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+                'total_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()['count'],
+                'published_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()['count'],
+                'draft_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()['count'],
+                'classrooms': conn.execute("SELECT COUNT(*) as count FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()['count']
             }
             conn.close()
             
@@ -4798,7 +4819,7 @@ def create_exam():
         published = 1 if action == "create" else 0
         conn.execute("INSERT INTO exams(title,faculty_id,duration,exam_date,subject,classroom_id,total_marks,pass_mark,pass_percentage,instructions,published) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (title,session["user_id"],duration,exam_date,subject,classroom_id,0,50,pass_pct,instructions,published))
         conn.commit()
-        exam_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+        exam_id = conn.last_insert_id()
         conn.close()
         log_activity(session["user_id"], f"Created exam: {title}")
         
@@ -4823,10 +4844,10 @@ def create_exam():
     
     # Get statistics
     stats = {
-        'total_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()[0],
-        'published_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()[0],
-        'draft_exams': conn.execute("SELECT COUNT(*) FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()[0],
-        'classrooms': conn.execute("SELECT COUNT(*) FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()[0]
+        'total_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s", (session["user_id"],)).fetchone()['count'],
+        'published_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=1", (session["user_id"],)).fetchone()['count'],
+        'draft_exams': conn.execute("SELECT COUNT(*) as count FROM exams WHERE faculty_id=%s AND published=0", (session["user_id"],)).fetchone()['count'],
+        'classrooms': conn.execute("SELECT COUNT(*) as count FROM classrooms WHERE faculty_id=%s AND (is_archived IS NULL OR is_archived=0)", (session["user_id"],)).fetchone()['count']
     }
     conn.close()
     
@@ -4913,11 +4934,11 @@ def add_questions(exam_id):
                 (exam_id, q, o1, o2, o3, o4, ans, diff, marks))
             conn.commit()
             # Recalculate total_marks
-            total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0] or 0
+            total = conn.execute("SELECT SUM(marks) as total FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()['total'] or 0
             conn.execute("UPDATE exams SET total_marks=%s WHERE id=%s", (total, exam_id))
             conn.commit()
             flash("Question added.", "success")
-    q_count = conn.execute("SELECT COUNT(*) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0]
+    q_count = conn.execute("SELECT COUNT(*) as count FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()['count']
     questions_list = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
     conn.close()
     return render_template("faculty/add_questions.html", exam_id=exam_id, exam=exam,
@@ -4941,7 +4962,7 @@ def select_questions(exam_id):
                 added += 1
         conn.commit()
         # Recalculate total_marks
-        total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0] or 0
+        total = conn.execute("SELECT SUM(marks) as total FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()['total'] or 0
         conn.execute("UPDATE exams SET total_marks=%s WHERE id=%s", (total, exam_id))
         conn.commit()
         conn.close()
@@ -5071,7 +5092,7 @@ def delete_question(id, exam_id):
     conn.execute("DELETE FROM questions WHERE id=%s", (id,))
     conn.commit()
     # Recalculate total_marks
-    total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0] or 0
+    total = conn.execute("SELECT SUM(marks) as total FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()['total'] or 0
     conn.execute("UPDATE exams SET total_marks=%s WHERE id=%s", (total, exam_id))
     conn.commit()
     conn.close()
@@ -5214,12 +5235,12 @@ def student():
 
     # Get exams attempted count (only valid, non-archived records)
     exams_attempted = conn.execute("""
-        SELECT COUNT(*) FROM submissions s
+        SELECT COUNT(*) as count FROM submissions s
         JOIN exams e ON e.id = s.exam_id
         JOIN users u ON u.id = s.student_id
         WHERE s.student_id = %s
         AND (e.is_archived IS NULL OR e.is_archived=0)
-    """, (sid,)).fetchone()[0]
+    """, (sid,)).fetchone()['count']
 
     # Get average score as a PERCENTAGE (score / total_marks * 100) - only valid, non-archived records
     avg_score = 0
@@ -5235,8 +5256,8 @@ def student():
         percentages = []
         for sub in published_subs:
             total_marks = conn.execute(
-                "SELECT SUM(marks) FROM questions WHERE exam_id=%s", (sub["exam_id"],)
-            ).fetchone()[0]
+                "SELECT SUM(marks) as total FROM questions WHERE exam_id=%s", (sub["exam_id"],)
+            ).fetchone()['total']
             if total_marks and total_marks > 0:
                 percentages.append(round((sub["score"] / total_marks) * 100, 1))
         if percentages:
@@ -5261,7 +5282,7 @@ def student():
     # Calculate percentage for each result
     recent_results_with_pct = []
     for r in recent_results:
-        total = conn.execute("SELECT SUM(marks) FROM questions WHERE exam_id=%s", (r["exam_id"],)).fetchone()[0]
+        total = conn.execute("SELECT SUM(marks) as total FROM questions WHERE exam_id=%s", (r["exam_id"],)).fetchone()['total']
         # Convert to dict before adding fields (sqlite3.Row is immutable)
         r_dict = dict(r)
         if total and total > 0:
@@ -5455,8 +5476,8 @@ def student_classroom_detail(classroom_id):
     
     # Get student count in classroom
     student_count = conn.execute("""
-        SELECT COUNT(*) FROM classroom_members WHERE classroom_id = %s
-    """, (classroom_id,)).fetchone()[0]
+        SELECT COUNT(*) as count FROM classroom_members WHERE classroom_id = %s
+    """, (classroom_id,)).fetchone()['count']
     
     conn.close()
     return render_template("student/student_classroom_detail.html",
@@ -5473,7 +5494,7 @@ def exam_instructions(exam_id):
     if not exam:
         conn.close()
         return redirect("/student")
-    q_count = conn.execute("SELECT COUNT(*) FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()[0]
+    q_count = conn.execute("SELECT COUNT(*) as count FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()['count']
     questions = conn.execute("SELECT marks FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
     total_marks = sum(q["marks"] or 1 for q in questions)
     if conn.execute("SELECT id FROM submissions WHERE student_id=%s AND exam_id=%s", (session["user_id"],exam_id)).fetchone():
@@ -5651,7 +5672,7 @@ def publish_results(exam_id):
         return redirect("/faculty")
     
     # Check if there are pending submissions
-    pending_count = conn.execute("SELECT COUNT(*) FROM submissions WHERE exam_id=%s AND result_published=0", (exam_id,)).fetchone()[0]
+    pending_count = conn.execute("SELECT COUNT(*) as count FROM submissions WHERE exam_id=%s AND result_published=0", (exam_id,)).fetchone()['count']
     
     if pending_count == 0:
         conn.close()
