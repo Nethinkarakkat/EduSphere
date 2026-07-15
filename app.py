@@ -31,6 +31,34 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
 app.permanent_session_lifetime = __import__("datetime").timedelta(minutes=30)
 
+# Custom Jinja filter for datetime formatting (handles both string and datetime objects)
+def format_datetime(value, format='%Y-%m-%d %H:%M'):
+    """Format datetime or string to specified format."""
+    if value is None:
+        return ''
+    if isinstance(value, str):
+        # If it's already a string, try to parse it first
+        try:
+            from datetime import datetime
+            # Try common datetime formats
+            for fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d']:
+                try:
+                    dt = datetime.strptime(value, fmt)
+                    return dt.strftime(format)
+                except ValueError:
+                    continue
+            # If parsing fails, return original string truncated
+            return value[:16] if len(value) > 16 else value
+        except Exception:
+            return str(value)[:16] if len(str(value)) > 16 else str(value)
+    # If it's a datetime object
+    try:
+        return value.strftime(format)
+    except AttributeError:
+        return str(value)[:16] if len(str(value)) > 16 else str(value)
+
+app.jinja_env.filters['format_datetime'] = format_datetime
+
 # Global avatar helper function
 def get_avatar(user):
     """Get avatar URL for a user, or None if no avatar exists."""
@@ -1551,7 +1579,7 @@ def admin():
         LEFT JOIN exams e ON e.faculty_id = u.id
         LEFT JOIN classroom_members cm ON cm.classroom_id = c.id
         WHERE u.role='faculty'
-        GROUP BY u.id
+        GROUP BY u.id, u.name, u.email, u.approved, u.created_at, u.profile_picture
         ORDER BY u.created_at DESC
     """).fetchall()
     
@@ -1561,7 +1589,7 @@ def admin():
                COUNT(cm.student_id) as student_count
         FROM classrooms c
         LEFT JOIN classroom_members cm ON cm.classroom_id = c.id
-        GROUP BY c.id
+        GROUP BY c.id, c.name, c.subject, c.code, c.faculty_id, c.created_at
         ORDER BY c.created_at DESC
     """).fetchall()
     
@@ -1707,11 +1735,12 @@ def admin_activity_export_csv():
 @app.route("/admin/activity/export/pdf")
 def admin_activity_export_pdf():
     from flask import Response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
-    from reportlab.lib import colors
-    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph
+    from pdf_utils import (
+        create_pdf_document, get_pdf_styles, get_column_widths,
+        get_table_style, format_datetime, create_header_table,
+        create_summary_table, apply_column_alignment
+    )
     import os
     g = require_role("admin")
     if g: return g
@@ -1736,154 +1765,67 @@ def admin_activity_export_pdf():
         logs = conn.execute(query, params).fetchall()
         conn.close()
         
-        # Create PDF with reportlab
+        # Create PDF with shared configuration
         response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=30, bottomMargin=30)
-        styles = getSampleStyleSheet()
-        wrap_style = styles['Normal'].clone('wrap')
-        wrap_style.fontSize = 10
-        wrap_style.leading = 14
-        wrap_style.textColor = colors.HexColor('#333333')
-        wrap_style.wordWrap = 'LTR'
-        wrap_style.splitLongWords = False
-        
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
         elements = []
         
-        # Header — logo+EduSphere top-right, report title left
+        # Header
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-
-        brand_style = styles['Normal'].clone('brand')
-        brand_style.fontSize = 11
-        brand_style.fontName = 'Helvetica-Bold'
-        brand_style.textColor = colors.HexColor('#4f46e5')
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right — same vertical line
-        hdr_title_style = styles['Normal'].clone('hdrtitle')
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = 'Helvetica-Bold'
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph('EduSphere', brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
-                ('LEFTPADDING',   (0, 0), (0, -1), 0),
-                ('RIGHTPADDING',  (0, 0), (0, -1), 0),
-                ('TOPPADDING',    (0, 0), (0, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0),  2),
-                ('BOTTOMPADDING', (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph('EduSphere', brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph('ACTIVITY LOG REPORT', hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
-        )
-        hdr_table.setStyle(TableStyle([
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN',         (2, 0), (2,  0), 'RIGHT'),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-            ('TOPPADDING',    (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
+        elements.append(create_header_table('ACTIVITY LOG REPORT', logo_path))
         
         # Applied filters
         if any([search_query, role_filter]):
-            elements.append(Paragraph("<b>Applied Filters:</b>", styles['Heading2']))
-            if search_query: elements.append(Paragraph(f"Search: {search_query}", styles['Normal']))
-            if role_filter: elements.append(Paragraph(f"Role: {role_filter}", styles['Normal']))
-            elements.append(Paragraph("<br/>", styles['Normal']))
+            elements.append(Paragraph("<b>Applied Filters:</b>", styles['wrap']))
+            if search_query: elements.append(Paragraph(f"Search: {search_query}", styles['wrap']))
+            if role_filter: elements.append(Paragraph(f"Role: {role_filter}", styles['wrap']))
+            elements.append(Paragraph("<br/>", styles['wrap']))
         
         # Summary section
-        summary_heading_style = styles['Normal'].clone('sumhead')
-        summary_heading_style.fontSize = 18
-        summary_heading_style.fontName = 'Helvetica-Bold'
-        summary_heading_style.textColor = colors.black
-        summary_heading_style.alignment = 0
-        summary_heading_style.spaceBefore = 10
-        summary_heading_style.spaceAfter = 8
-        elements.append(Paragraph("SUMMARY", summary_heading_style))
-        
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         summary_data = [
-            ["", "Total Records:", str(len(logs))],
-            ["", "Generated:",    datetime.now().strftime('%d %b %Y %H:%M')]
+            ("Total Records:", str(len(logs))),
         ]
-        summary_table = Table(summary_data, colWidths=[2*cm, 4*cm, 6*cm])
-        summary_table.setStyle(TableStyle([
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (1, 0), (1, -1), 12),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
-            ('FONTSIZE', (2, 0), (2, -1), 12),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#333333')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles['Normal']))
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
         
         # Data table
         headers = ["User", "Role", "Email", "Action", "Timestamp"]
         data = [headers]
         for r in logs:
             data.append([
-                Paragraph(r["name"] or "—", wrap_style),
-                Paragraph(r["role"] or "—", wrap_style),
-                Paragraph(r["email"] or "—", wrap_style),
-                Paragraph(r["action"] or "—", wrap_style),
-                Paragraph(fmt_submitted(r["timestamp"]), wrap_style)
+                Paragraph(r["name"] or "—", styles['name']),
+                Paragraph(r["role"] or "—", styles['wrap']),
+                Paragraph(r["email"] or "—", styles['wrap']),
+                Paragraph(r["action"] or "—", styles['wrap']),
+                Paragraph(format_datetime(r["timestamp"]), styles['wrap'])
             ])
         
-        table = Table(data, colWidths=[2.5*cm, 2.2*cm, 4.0*cm, 5.5*cm, 3.8*cm])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4f46e5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('LEFTPADDING', (0, 0), (-1, 0), 10),
-            ('RIGHTPADDING', (0, 0), (-1, 0), 10),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('LEFTPADDING', (0, 1), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-            ('ALIGN', (0, 1), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 1), (1, -1), 'CENTER'),
-            ('ALIGN', (2, 1), (3, -1), 'LEFT'),
-            ('ALIGN', (4, 1), (4, -1), 'RIGHT'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('WORDWRAP', (4, 1), (4, -1), False),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        # Get column widths and table style
+        col_widths = get_column_widths('activity')
+        table_style = get_table_style(len(headers))
+        
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': False},   # User - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Role - no wrap
+            {'align': 'LEFT', 'wrap': True},    # Email - wrap
+            {'align': 'LEFT', 'wrap': True},    # Action - wrap
+            {'align': 'CENTER', 'wrap': True},  # Timestamp - wrap for date/time
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
+        
+        table = Table(data, colWidths=col_widths)
+        table.setStyle(table_style)
         elements.append(table)
         
         # Footer
-        elements.append(Paragraph("<br/><br/><br/>", styles['Normal']))
-        footer_style = styles['Normal'].clone('footer')
-        footer_style.fontSize = 8
-        footer_style.textColor = colors.grey
-        footer_style.alignment = 1
-        elements.append(Paragraph("Generated by EduSphere Examination System", footer_style))
-        elements.append(Paragraph("This report is electronically generated and does not require a signature.", footer_style))
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
         
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        doc.build(elements)
         response.seek(0)
         return Response(
             response.getvalue(),
@@ -1969,11 +1911,12 @@ def admin_users_export_csv():
 @app.route("/admin/users/export/pdf")
 def admin_users_export_pdf():
     from flask import Response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
-    from reportlab.lib import colors
-    from reportlab.lib.units import cm
+    from reportlab.platypus import Paragraph
+    from pdf_utils import (
+        create_pdf_document, get_pdf_styles, get_column_widths,
+        get_table_style, format_datetime, create_header_table,
+        create_summary_table, apply_column_alignment
+    )
     import os
     g = require_role("admin")
     if g: return g
@@ -1994,159 +1937,71 @@ def admin_users_export_pdf():
         users = conn.execute(query, params).fetchall()
         conn.close()
         
-        # Create PDF with reportlab
+        # Create PDF with shared configuration
         response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=30, bottomMargin=30)
-        styles = getSampleStyleSheet()
-        wrap_style = styles['Normal'].clone('wrap')
-        wrap_style.fontSize = 10
-        wrap_style.leading = 14
-        wrap_style.textColor = colors.HexColor('#333333')
-        wrap_style.wordWrap = 'LTR'
-        wrap_style.splitLongWords = False
-        
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
         elements = []
         
-        # Header — logo+EduSphere top-right, report title left
+        # Header
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-
-        brand_style = styles['Normal'].clone('brand')
-        brand_style.fontSize = 11
-        brand_style.fontName = 'Helvetica-Bold'
-        brand_style.textColor = colors.HexColor('#4f46e5')
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right — same vertical line
-        hdr_title_style = styles['Normal'].clone('hdrtitle')
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = 'Helvetica-Bold'
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph('EduSphere', brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
-                ('LEFTPADDING',   (0, 0), (0, -1), 0),
-                ('RIGHTPADDING',  (0, 0), (0, -1), 0),
-                ('TOPPADDING',    (0, 0), (0, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0),  2),
-                ('BOTTOMPADDING', (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph('EduSphere', brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph('USERS REPORT', hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
-        )
-        hdr_table.setStyle(TableStyle([
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN',         (2, 0), (2,  0), 'RIGHT'),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-            ('TOPPADDING',    (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
+        elements.append(create_header_table('USERS REPORT', logo_path))
         
         # Applied filters
         if any([q, role_f, status_f]):
-            elements.append(Paragraph("<b>Applied Filters:</b>", styles['Heading2']))
-            if q: elements.append(Paragraph(f"Search: {q}", styles['Normal']))
-            if role_f: elements.append(Paragraph(f"Role: {role_f}", styles['Normal']))
-            if status_f: elements.append(Paragraph(f"Status: {status_f}", styles['Normal']))
-            elements.append(Paragraph("<br/>", styles['Normal']))
+            elements.append(Paragraph("<b>Applied Filters:</b>", styles['wrap']))
+            if q: elements.append(Paragraph(f"Search: {q}", styles['wrap']))
+            if role_f: elements.append(Paragraph(f"Role: {role_f}", styles['wrap']))
+            if status_f: elements.append(Paragraph(f"Status: {status_f}", styles['wrap']))
+            elements.append(Paragraph("<br/>", styles['wrap']))
         
         # Summary section
-        summary_heading_style = styles['Normal'].clone('sumhead')
-        summary_heading_style.fontSize = 18
-        summary_heading_style.fontName = 'Helvetica-Bold'
-        summary_heading_style.textColor = colors.black
-        summary_heading_style.alignment = 0
-        summary_heading_style.spaceBefore = 10
-        summary_heading_style.spaceAfter = 8
-        elements.append(Paragraph("SUMMARY", summary_heading_style))
-        
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         active_count = sum(1 for r in users if r["approved"])
         summary_data = [
-            ["", "Total Users:", str(len(users))],
-            ["", "Active:",       str(active_count)],
-            ["", "Pending:",      str(len(users) - active_count)],
-            ["", "Generated:",    datetime.now().strftime('%d %b %Y %H:%M')]
+            ("Total Users:", str(len(users))),
+            ("Active:", str(active_count)),
+            ("Pending:", str(len(users) - active_count)),
         ]
-        summary_table = Table(summary_data, colWidths=[2*cm, 4*cm, 6*cm])
-        summary_table.setStyle(TableStyle([
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (1, 0), (1, -1), 12),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
-            ('FONTSIZE', (2, 0), (2, -1), 12),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#333333')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles['Normal']))
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
         
         # Data table
         headers = ["Name", "Email", "Role", "Status", "Created At"]
         data = [headers]
         for r in users:
             data.append([
-                Paragraph(r["name"] or "—", wrap_style),
-                Paragraph(r["email"] or "—", wrap_style),
-                Paragraph(r["role"] or "—", wrap_style),
-                Paragraph("Active" if r["approved"] else "Pending", wrap_style),
-                Paragraph(str(r["created_at"])[:19], wrap_style)
+                Paragraph(r["name"] or "—", styles['name']),
+                Paragraph(r["email"] or "—", styles['wrap']),
+                Paragraph(r["role"] or "—", styles['wrap']),
+                Paragraph("Active" if r["approved"] else "Pending", styles['wrap']),
+                Paragraph(format_datetime(r["created_at"]), styles['wrap'])
             ])
         
-        table = Table(data, colWidths=[3.5*cm, 5.0*cm, 2.0*cm, 2.0*cm, 5.5*cm])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4f46e5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('LEFTPADDING', (0, 0), (-1, 0), 10),
-            ('RIGHTPADDING', (0, 0), (-1, 0), 10),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('LEFTPADDING', (0, 1), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-            ('ALIGN', (0, 1), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 1), (2, -1), 'CENTER'),
-            ('ALIGN', (3, 1), (3, -1), 'CENTER'),
-            ('ALIGN', (4, 1), (4, -1), 'CENTER'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('WORDWRAP', (3, 1), (3, -1), False),
-            ('WORDWRAP', (4, 1), (4, -1), False),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        # Get column widths and table style
+        col_widths = get_column_widths('users')
+        table_style = get_table_style(len(headers))
+        
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': False},   # Name - no wrap
+            {'align': 'LEFT', 'wrap': True},    # Email - wrap
+            {'align': 'CENTER', 'wrap': False}, # Role - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Status - no wrap
+            {'align': 'CENTER', 'wrap': True},  # Created At - wrap for date/time
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
+        
+        table = Table(data, colWidths=col_widths)
+        table.setStyle(table_style)
         elements.append(table)
         
         # Footer
-        elements.append(Paragraph("<br/><br/><br/>", styles['Normal']))
-        footer_style = styles['Normal'].clone('footer')
-        footer_style.fontSize = 8
-        footer_style.textColor = colors.grey
-        footer_style.alignment = 1
-        elements.append(Paragraph("Generated by EduSphere Examination System", footer_style))
-        elements.append(Paragraph("This report is electronically generated and does not require a signature.", footer_style))
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
         
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        doc.build(elements)
         response.seek(0)
         return Response(
             response.getvalue(),
@@ -2335,12 +2190,12 @@ def reports():
     if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
     if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
-    query += " GROUP BY users.id, exams.id ORDER BY submissions.submitted_at DESC"
+    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
 
     # Faculty performance
     faculty_stats = conn.execute("""
-        SELECT faculty.name as faculty_name, faculty.id as faculty_id,
+        SELECT faculty.id, faculty.name as faculty_name,
                COUNT(DISTINCT exams.id) as exam_count,
                COUNT(submissions.id) as attempt_count,
                AVG(CAST(submissions.score AS FLOAT)/NULLIF(
@@ -2348,29 +2203,29 @@ def reports():
         FROM users AS faculty
         LEFT JOIN exams       ON exams.faculty_id=faculty.id
         LEFT JOIN submissions ON submissions.exam_id=exams.id
-        WHERE faculty.role='faculty' GROUP BY faculty.id ORDER BY avg_pct DESC
+        WHERE faculty.role='faculty' GROUP BY faculty.id, faculty.name ORDER BY avg_pct DESC
     """).fetchall()
 
     # Top 5 students
     top_students = conn.execute("""
-        SELECT users.name,
+        SELECT users.id, users.name,
                AVG(CAST(submissions.score AS FLOAT)/NULLIF(
                    (SELECT COUNT(*) FROM questions WHERE exam_id=exams.id),0)*100) as avg_pct,
                COUNT(submissions.id) as attempts
         FROM submissions JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
-        GROUP BY users.id ORDER BY avg_pct DESC LIMIT 5
+        GROUP BY users.id, users.name ORDER BY avg_pct DESC LIMIT 5
     """).fetchall()
 
     # Bottom 5 students
     low_students = conn.execute("""
-        SELECT users.name,
+        SELECT users.id, users.name,
                AVG(CAST(submissions.score AS FLOAT)/NULLIF(
                    (SELECT COUNT(*) FROM questions WHERE exam_id=exams.id),0)*100) as avg_pct,
                COUNT(submissions.id) as attempts
         FROM submissions JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
-        GROUP BY users.id ORDER BY avg_pct ASC LIMIT 5
+        GROUP BY users.id, users.name ORDER BY avg_pct ASC LIMIT 5
     """).fetchall()
 
     students  = conn.execute("SELECT * FROM users WHERE role='student' ORDER BY name").fetchall()
@@ -2411,7 +2266,7 @@ def export_csv():
     if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
     if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
-    query += " GROUP BY users.id, exams.id ORDER BY submissions.submitted_at DESC"
+    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.score, submissions.submitted_at, exams.pass_percentage ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
     conn.close()
     
@@ -2477,7 +2332,7 @@ def export_pdf():
         if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
         if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
         if filters: query += " WHERE " + " AND ".join(filters)
-        query += " GROUP BY users.id, exams.id ORDER BY submissions.submitted_at DESC"
+        query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
         data = conn.execute(query, params).fetchall()
         conn.close()
         
@@ -2487,117 +2342,47 @@ def export_pdf():
         fail_count = total_count - pass_count
         avg_pct = sum(round(r["score"]/r["total"]*100,1) if r["total"] else 0 for r in data) / total_count if total_count else 0
         
-        # Create PDF with reportlab
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet
-        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
+        # Create PDF with shared configuration
+        from flask import Response
+        from reportlab.platypus import Paragraph
         from reportlab.lib import colors
-        from reportlab.lib.units import cm
+        from pdf_utils import (
+            create_pdf_document, get_pdf_styles, get_column_widths,
+            get_table_style, format_datetime, create_header_table,
+            create_summary_table, apply_column_alignment
+        )
         import os
         
         response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=30, bottomMargin=30)
-        styles = getSampleStyleSheet()
-        wrap_style = styles['Normal'].clone('wrap')
-        wrap_style.fontSize = 10
-        wrap_style.leading = 14
-        wrap_style.textColor = colors.HexColor('#333333')
-        wrap_style.wordWrap = 'LTR'
-        wrap_style.splitLongWords = False
-        
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
         elements = []
         
-        # Header — logo+EduSphere top-right, report title left
+        # Header
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-
-        brand_style = styles['Normal'].clone('brand')
-        brand_style.fontSize = 11
-        brand_style.fontName = 'Helvetica-Bold'
-        brand_style.textColor = colors.HexColor('#4f46e5')
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right — same vertical line
-        hdr_title_style = styles['Normal'].clone('hdrtitle')
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = 'Helvetica-Bold'
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph('EduSphere', brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
-                ('LEFTPADDING',   (0, 0), (0, -1), 0),
-                ('RIGHTPADDING',  (0, 0), (0, -1), 0),
-                ('TOPPADDING',    (0, 0), (0, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0),  2),
-                ('BOTTOMPADDING', (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph('EduSphere', brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph('EXAM REPORT', hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
-        )
-        hdr_table.setStyle(TableStyle([
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN',         (2, 0), (2,  0), 'RIGHT'),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-            ('TOPPADDING',    (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
+        elements.append(create_header_table('EXAM REPORT', logo_path))
         
         # Applied filters
         if any([sf, ef, ff, df, dt, sq]):
-            elements.append(Paragraph("<b>Applied Filters:</b>", styles['Heading2']))
-            if sf: elements.append(Paragraph(f"Student ID: {sf}", styles['Normal']))
-            if ef: elements.append(Paragraph(f"Exam ID: {ef}", styles['Normal']))
-            if ff: elements.append(Paragraph(f"Faculty ID: {ff}", styles['Normal']))
-            if df: elements.append(Paragraph(f"Date From: {df}", styles['Normal']))
-            if dt: elements.append(Paragraph(f"Date To: {dt}", styles['Normal']))
-            if sq: elements.append(Paragraph(f"Search: {sq}", styles['Normal']))
-            elements.append(Paragraph("<br/>", styles['Normal']))
+            elements.append(Paragraph("<b>Applied Filters:</b>", styles['wrap']))
+            if sf: elements.append(Paragraph(f"Student ID: {sf}", styles['wrap']))
+            if ef: elements.append(Paragraph(f"Exam ID: {ef}", styles['wrap']))
+            if ff: elements.append(Paragraph(f"Faculty ID: {ff}", styles['wrap']))
+            if df: elements.append(Paragraph(f"Date From: {df}", styles['wrap']))
+            if dt: elements.append(Paragraph(f"Date To: {dt}", styles['wrap']))
+            if sq: elements.append(Paragraph(f"Search: {sq}", styles['wrap']))
+            elements.append(Paragraph("<br/>", styles['wrap']))
         
         # Summary section
-        summary_heading_style = styles['Normal'].clone('sumhead')
-        summary_heading_style.fontSize = 18
-        summary_heading_style.fontName = 'Helvetica-Bold'
-        summary_heading_style.textColor = colors.black
-        summary_heading_style.alignment = 0
-        summary_heading_style.spaceBefore = 10
-        summary_heading_style.spaceAfter = 8
-        elements.append(Paragraph("SUMMARY", summary_heading_style))
-        
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         summary_data = [
-            ["", "Total Records:", str(total_count)],
-            ["", "Passed:",        str(pass_count)],
-            ["", "Failed:",        str(fail_count)],
-            ["", "Average %:",     f"{avg_pct:.1f}%"],
-            ["", "Generated:",     datetime.now().strftime('%d %b %Y %H:%M')]
+            ("Total Records:", str(total_count)),
+            ("Passed:", str(pass_count)),
+            ("Failed:", str(fail_count)),
+            ("Average %:", f"{avg_pct:.1f}%"),
         ]
-        summary_table = Table(summary_data, colWidths=[2*cm, 4*cm, 6*cm])
-        summary_table.setStyle(TableStyle([
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (1, 0), (1, -1), 12),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
-            ('FONTSIZE', (2, 0), (2, -1), 12),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#333333')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles['Normal']))
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
         
         # Data table
         headers = ["Student", "Exam", "Date", "Subject", "Faculty", "Score", "Total", "%", "Result"]
@@ -2605,64 +2390,54 @@ def export_pdf():
         for r in data:
             pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
             result = "Pass" if r["score"] >= r["total"]/2 else "Fail"
-            result_style = wrap_style.clone()
+            result_style = styles['wrap'].clone()
             if result == "Pass":
                 result_style.textColor = colors.HexColor('#16A34A')
                 result_style.fontWeight = 600
             else:
                 result_style.textColor = colors.HexColor('#DC2626')
                 result_style.fontWeight = 600
+            
             data_rows.append([
-                Paragraph(r["student"] or "—", wrap_style),
-                Paragraph(r["title"] or "—", wrap_style),
-                Paragraph(str(r["exam_date"])[:10], wrap_style),
-                Paragraph(r["subject"] or "—", wrap_style),
-                Paragraph(r["faculty"] or "—", wrap_style),
-                Paragraph(str(r["score"]), wrap_style),
-                Paragraph(str(r["total"]), wrap_style),
-                Paragraph(f"{pct}%", wrap_style),
+                Paragraph(r["student"] or "—", styles['name']),
+                Paragraph(r["title"] or "—", styles['wrap']),
+                Paragraph(format_datetime(r["exam_date"]), styles['wrap']),
+                Paragraph(r["subject"] or "—", styles['wrap']),
+                Paragraph(r["faculty"] or "—", styles['wrap']),
+                Paragraph(str(r["score"]), styles['wrap']),
+                Paragraph(str(r["total"]), styles['wrap']),
+                Paragraph(f"{pct}%", styles['wrap']),
                 Paragraph(result, result_style)
             ])
         
-        table = Table(data_rows, colWidths=[2.8*cm, 1.8*cm, 1.8*cm, 2.8*cm, 2.2*cm, 1.5*cm, 1.5*cm, 1.8*cm, 1.8*cm])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4f46e5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('LEFTPADDING', (0, 0), (-1, 0), 10),
-            ('RIGHTPADDING', (0, 0), (-1, 0), 10),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('LEFTPADDING', (0, 1), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-            ('ALIGN', (0, 1), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 1), (2, -1), 'CENTER'),
-            ('ALIGN', (3, 1), (4, -1), 'LEFT'),
-            ('ALIGN', (5, 1), (8, -1), 'CENTER'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('WORDWRAP', (2, 1), (2, -1), False),
-            ('WORDWRAP', (5, 1), (8, -1), False),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        # Get column widths and table style
+        col_widths = get_column_widths('exam')
+        table_style = get_table_style(len(headers))
+        
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': False},   # Student - no wrap
+            {'align': 'LEFT', 'wrap': True},    # Exam - wrap
+            {'align': 'CENTER', 'wrap': True},  # Date - wrap for date/time
+            {'align': 'LEFT', 'wrap': True},    # Subject - wrap
+            {'align': 'LEFT', 'wrap': True},    # Faculty - wrap
+            {'align': 'CENTER', 'wrap': False}, # Score - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Total - no wrap
+            {'align': 'CENTER', 'wrap': False}, # % - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Result - no wrap
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
+        
+        table = Table(data_rows, colWidths=col_widths)
+        table.setStyle(table_style)
         elements.append(table)
         
         # Footer
-        elements.append(Paragraph("<br/><br/><br/>", styles['Normal']))
-        footer_style = styles['Normal'].clone('footer')
-        footer_style.fontSize = 8
-        footer_style.textColor = colors.grey
-        footer_style.alignment = 1
-        elements.append(Paragraph("Generated by EduSphere Examination System", footer_style))
-        elements.append(Paragraph("This report is electronically generated and does not require a signature.", footer_style))
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
         
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        doc.build(elements)
         response.seek(0)
         return Response(
             response.getvalue(),
@@ -2682,7 +2457,7 @@ def export_faculty_csv():
     rows = conn.execute("""SELECT faculty.name, COUNT(DISTINCT exams.id) as exams, COUNT(submissions.id) as attempts
         FROM users AS faculty LEFT JOIN exams ON exams.faculty_id=faculty.id
         LEFT JOIN submissions ON submissions.exam_id=exams.id
-        WHERE faculty.role='faculty' GROUP BY faculty.id""").fetchall()
+        WHERE faculty.role='faculty' GROUP BY faculty.id, faculty.name""").fetchall()
     conn.close()
     out = io.StringIO(); w = csv.writer(out)
     w.writerow(["Faculty","Exams Conducted","Total Attempts"])
@@ -2701,9 +2476,10 @@ def classrooms():
     if g: return g
     conn = get_db()
     rooms = conn.execute("""
-        SELECT classrooms.*, COUNT(classroom_members.id) as member_count
+        SELECT classrooms.id, classrooms.name, classrooms.subject, classrooms.code, classrooms.faculty_id, classrooms.created_at, classrooms.is_archived,
+               COUNT(classroom_members.id) as member_count
         FROM classrooms LEFT JOIN classroom_members ON classrooms.id=classroom_members.classroom_id
-        WHERE classrooms.faculty_id=%s GROUP BY classrooms.id ORDER BY classrooms.created_at DESC
+        WHERE classrooms.faculty_id=%s GROUP BY classrooms.id, classrooms.name, classrooms.subject, classrooms.code, classrooms.faculty_id, classrooms.created_at, classrooms.is_archived ORDER BY classrooms.created_at DESC
     """, (session["user_id"],)).fetchall()
     conn.close()
     return render_template("faculty/classrooms.html", rooms=rooms)
@@ -2743,10 +2519,14 @@ def classroom_detail(cid):
         WHERE classroom_members.classroom_id=%s ORDER BY users.name
     """, (cid,)).fetchall()
     exams = conn.execute("""
-        SELECT exams.*, COUNT(questions.id) as q_count
+        SELECT exams.id, exams.title, exams.subject, exams.exam_date, exams.duration, exams.pass_percentage,
+               exams.launched, exams.published, exams.classroom_id, exams.faculty_id, exams.created_at, exams.is_archived,
+               COUNT(questions.id) as q_count
         FROM exams LEFT JOIN questions ON exams.id=questions.exam_id
         WHERE exams.classroom_id=%s AND exams.faculty_id=%s
-        GROUP BY exams.id ORDER BY exams.id DESC
+        GROUP BY exams.id, exams.title, exams.subject, exams.exam_date, exams.duration, exams.pass_percentage,
+               exams.launched, exams.published, exams.classroom_id, exams.faculty_id, exams.created_at, exams.is_archived
+        ORDER BY exams.id DESC
     """, (cid, session["user_id"])).fetchall()
     # All other classrooms (for move exam dropdown)
     other_classrooms = conn.execute(
@@ -2886,12 +2666,13 @@ def admin_classrooms():
     if g: return g
     conn = get_db()
     rooms = conn.execute("""
-        SELECT c.*, u.name as faculty_name, COUNT(cm.id) as member_count
+        SELECT c.id, c.name, c.subject, c.code, c.faculty_id, c.created_at, c.is_archived,
+               u.name as faculty_name, COUNT(cm.id) as member_count
         FROM classrooms c
         LEFT JOIN users u ON u.id = c.faculty_id
         LEFT JOIN classroom_members cm ON cm.classroom_id = c.id
         WHERE (c.is_archived IS NULL OR c.is_archived=0)
-        GROUP BY c.id
+        GROUP BY c.id, c.name, c.subject, c.code, c.faculty_id, c.created_at, c.is_archived, u.name
         ORDER BY c.created_at DESC
     """).fetchall()
     conn.close()
@@ -2914,11 +2695,14 @@ def admin_classroom_detail(cid):
         ORDER BY cm.joined_at DESC
     """, (cid,)).fetchall()
     exams = conn.execute("""
-        SELECT e.*, COUNT(q.id) as question_count
+        SELECT e.id, e.title, e.subject, e.exam_date, e.duration, e.pass_percentage,
+               e.launched, e.published, e.classroom_id, e.faculty_id, e.created_at, e.is_archived,
+               COUNT(q.id) as question_count
         FROM exams e
         LEFT JOIN questions q ON q.exam_id = e.id
         WHERE e.classroom_id = %s
-        GROUP BY e.id
+        GROUP BY e.id, e.title, e.subject, e.exam_date, e.duration, e.pass_percentage,
+               e.launched, e.published, e.classroom_id, e.faculty_id, e.created_at, e.is_archived
         ORDER BY e.created_at DESC
     """, (cid,)).fetchall()
     conn.close()
@@ -2953,12 +2737,16 @@ def admin_exams():
     sel_faculty = request.args.get("faculty", "")
     
     query = """
-        SELECT e.*, u.name as faculty_name, c.name as classroom_name, COUNT(q.id) as question_count
+        SELECT e.id, e.title, e.subject, e.exam_date, e.duration, e.pass_percentage,
+               e.launched, e.published, e.classroom_id, e.faculty_id, e.created_at, e.is_archived,
+               u.name as faculty_name, c.name as classroom_name, COUNT(q.id) as question_count
         FROM exams e
         LEFT JOIN users u ON u.id = e.faculty_id
         LEFT JOIN classrooms c ON c.id = e.classroom_id
         LEFT JOIN questions q ON q.exam_id = e.id
-        GROUP BY e.id
+        GROUP BY e.id, e.title, e.subject, e.exam_date, e.duration, e.pass_percentage,
+               e.launched, e.published, e.classroom_id, e.faculty_id, e.created_at, e.is_archived,
+               u.name, c.name
     """
     params = []
     if status_f == "draft":
@@ -3053,31 +2841,31 @@ def admin_reports():
         query += " AND sub.submitted_at <= %s"
         params.append(date_to)
     
-    query += " GROUP BY sub.id ORDER BY sub.submitted_at DESC"
+    query += " GROUP BY sub.id, s.name, e.title, e.exam_date, u.name, c.name, sub.score, sub.submitted_at ORDER BY sub.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
     
     # Faculty stats
     faculty_stats = conn.execute("""
-        SELECT u.name as faculty_name, COUNT(DISTINCT e.id) as exam_count,
+        SELECT u.id, u.name as faculty_name, COUNT(DISTINCT e.id) as exam_count,
                COUNT(sub.id) as attempt_count, 
                AVG(sub.score * 100.0 / (SELECT COUNT(*) FROM questions WHERE exam_id = sub.exam_id)) as avg_pct
         FROM users u
         JOIN exams e ON e.faculty_id = u.id
         LEFT JOIN submissions sub ON sub.exam_id = e.id
         WHERE u.role='faculty' AND u.approved=1
-        GROUP BY u.id
+        GROUP BY u.id, u.name
     """).fetchall()
     
     # Classroom stats
     classroom_stats = conn.execute("""
-        SELECT c.name as classroom_name, u.name as faculty_name, COUNT(DISTINCT cm.student_id) as student_count,
+        SELECT c.id, c.name as classroom_name, u.name as faculty_name, COUNT(DISTINCT cm.student_id) as student_count,
                AVG(sub.score * 100.0 / (SELECT COUNT(*) FROM questions WHERE exam_id = sub.exam_id)) as avg_pct
         FROM classrooms c
         LEFT JOIN users u ON u.id = c.faculty_id
         LEFT JOIN classroom_members cm ON cm.classroom_id = c.id
         LEFT JOIN exams e ON e.classroom_id = c.id
         LEFT JOIN submissions sub ON sub.exam_id = e.id
-        GROUP BY c.id
+        GROUP BY c.id, c.name, u.name
     """).fetchall()
     conn.close()
     
@@ -3102,7 +2890,7 @@ def admin_reports_export_csv():
         JOIN users u ON u.id = e.faculty_id
         LEFT JOIN classrooms c ON c.id = e.classroom_id
         LEFT JOIN questions q ON q.exam_id = e.id
-        GROUP BY sub.id
+        GROUP BY sub.id, s.name, e.title, u.name, c.name, sub.score, sub.submitted_at
         ORDER BY sub.submitted_at DESC
     """).fetchall()
     conn.close()
@@ -3115,7 +2903,7 @@ def admin_reports_export_csv():
         pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
         w.writerow([r["student_name"], r["exam_title"], r["faculty_name"], r["classroom_name"],
                     r["score"], r["total"], f"{pct}%", "Pass" if r["score"]>=r["total"]/2 else "Fail",
-                    r["submitted_at"][:10] if r["submitted_at"] else ""])
+                    r["submitted_at"].strftime('%Y-%m-%d') if r["submitted_at"] else ""])
     resp = make_response(out.getvalue())
     resp.headers["Content-Type"] = "text/csv"
     resp.headers["Content-Disposition"] = "attachment; filename=admin_reports.csv"
@@ -3608,7 +3396,8 @@ def faculty():
                exams.launched, exams.published, exams.subject, exams.classroom_id,
                COUNT(questions.id) AS total_questions
         FROM exams LEFT JOIN questions ON exams.id=questions.exam_id
-        WHERE exams.faculty_id=%s GROUP BY exams.id ORDER BY exams.id DESC
+        WHERE exams.faculty_id=%s GROUP BY exams.id, exams.title, exams.exam_date, exams.duration,
+               exams.launched, exams.published, exams.subject, exams.classroom_id ORDER BY exams.id DESC
     """, (session["user_id"],)).fetchall()
     exams_with_status = []
     for e in exams:
@@ -3733,10 +3522,10 @@ def faculty():
         recent_publications = conn.execute("""
             SELECT COUNT(*) as count FROM exams
             WHERE faculty_id=%s AND published=1 
-            AND datetime(created_at) >= datetime('now', '-7 days')
+            AND created_at >= CURRENT_DATE - INTERVAL '7 days'
         """, (session["user_id"],)).fetchone()
         recent_publications_count = recent_publications["count"] if recent_publications else 0
-    except sqlite3.OperationalError as e:
+    except Exception as e:
         app.logger.exception("Recent publications query failed")
         recent_publications_count = 0
     
@@ -3864,7 +3653,7 @@ def faculty_results():
         like_term = f"%{sel_search}%"
         params.extend([like_term, like_term, like_term])
     
-    query += " GROUP BY users.id, exams.id"
+    query += " GROUP BY users.id, users.name, users.email, users.reg_number, exams.id, exams.title, exams.subject, exams.exam_date, submissions.score, submissions.submitted_at, exams.classroom_id, exams.pass_percentage"
     
     # Pass/Fail filter must use HAVING clause after GROUP BY
     if sel_result:
@@ -3939,7 +3728,7 @@ def faculty_export_csv():
         like_term = f"%{sel_search}%"
         params.extend([like_term, like_term, like_term])
     
-    query += " GROUP BY users.id, exams.id"
+    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.subject, exams.exam_date, submissions.score, submissions.submitted_at, exams.classroom_id, exams.pass_percentage"
     
     # Pass/Fail filter must use HAVING clause after GROUP BY
     if sel_result:
@@ -4063,109 +3852,45 @@ def faculty_export_pdf():
         fail_count = total_count - pass_count
         avg_pct = sum(round(r["score"]/r["total"]*100,1) if r["total"] else 0 for r in results) / total_count if total_count else 0
         
-        # Create PDF with reportlab
-        response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=30, bottomMargin=30)
-        styles = getSampleStyleSheet()
-        wrap_style = styles['Normal'].clone('wrap')
-        wrap_style.fontSize = 10
-        wrap_style.leading = 14
-        wrap_style.textColor = colors.HexColor('#333333')
-        wrap_style.wordWrap = 'LTR'
-        wrap_style.splitLongWords = False
+        # Create PDF with shared configuration
+        from flask import Response
+        from reportlab.platypus import Paragraph
+        from pdf_utils import (
+            create_pdf_document, get_pdf_styles, get_column_widths,
+            get_table_style, format_datetime, create_header_table,
+            create_summary_table, apply_column_alignment
+        )
+        import os
         
+        response = io.BytesIO()
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
         elements = []
         
-        # Header — logo+EduSphere top-right, report title left
+        # Header
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-
-        brand_style = styles['Normal'].clone('brand')
-        brand_style.fontSize = 11
-        brand_style.fontName = 'Helvetica-Bold'
-        brand_style.textColor = colors.HexColor('#4f46e5')
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right — same vertical line
-        hdr_title_style = styles['Normal'].clone('hdrtitle')
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = 'Helvetica-Bold'
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph('EduSphere', brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
-                ('LEFTPADDING',   (0, 0), (0, -1), 0),
-                ('RIGHTPADDING',  (0, 0), (0, -1), 0),
-                ('TOPPADDING',    (0, 0), (0, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0),  2),
-                ('BOTTOMPADDING', (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph('EduSphere', brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph('FACULTY EXAM REPORT', hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
-        )
-        hdr_table.setStyle(TableStyle([
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN',         (2, 0), (2,  0), 'RIGHT'),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-            ('TOPPADDING',    (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
+        elements.append(create_header_table('FACULTY EXAM REPORT', logo_path))
         
         # Applied filters
         if any([sel_subject, sel_classroom, sel_exam, sel_date, sel_result]):
-            elements.append(Paragraph("<b>Applied Filters:</b>", styles['Heading2']))
-            if sel_subject: elements.append(Paragraph(f"Subject: {sel_subject}", styles['Normal']))
-            if sel_classroom: elements.append(Paragraph(f"Classroom ID: {sel_classroom}", styles['Normal']))
-            if sel_exam: elements.append(Paragraph(f"Exam ID: {sel_exam}", styles['Normal']))
-            if sel_date: elements.append(Paragraph(f"Date: {sel_date}", styles['Normal']))
-            if sel_result: elements.append(Paragraph(f"Result: {sel_result}", styles['Normal']))
-            elements.append(Paragraph("<br/>", styles['Normal']))
+            elements.append(Paragraph("<b>Applied Filters:</b>", styles['wrap']))
+            if sel_subject: elements.append(Paragraph(f"Subject: {sel_subject}", styles['wrap']))
+            if sel_classroom: elements.append(Paragraph(f"Classroom ID: {sel_classroom}", styles['wrap']))
+            if sel_exam: elements.append(Paragraph(f"Exam ID: {sel_exam}", styles['wrap']))
+            if sel_date: elements.append(Paragraph(f"Date: {sel_date}", styles['wrap']))
+            if sel_result: elements.append(Paragraph(f"Result: {sel_result}", styles['wrap']))
+            elements.append(Paragraph("<br/>", styles['wrap']))
         
         # Summary section
-        summary_heading_style = styles['Normal'].clone('sumhead')
-        summary_heading_style.fontSize = 18
-        summary_heading_style.fontName = 'Helvetica-Bold'
-        summary_heading_style.textColor = colors.black
-        summary_heading_style.alignment = 0
-        summary_heading_style.spaceBefore = 10
-        summary_heading_style.spaceAfter = 8
-        elements.append(Paragraph('SUMMARY', summary_heading_style))
-        
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         summary_data = [
-            ["", "Total Records:", str(total_count)],
-            ["", "Passed:",        str(pass_count)],
-            ["", "Failed:",        str(fail_count)],
-            ["", "Average %:",     f"{avg_pct:.1f}%"],
-            ["", "Generated:",     datetime.now().strftime('%d %b %Y %H:%M')]
+            ("Total Records:", str(total_count)),
+            ("Passed:", str(pass_count)),
+            ("Failed:", str(fail_count)),
+            ("Average %:", f"{avg_pct:.1f}%"),
         ]
-        summary_table = Table(summary_data, colWidths=[2*cm, 4*cm, 6*cm])
-        summary_table.setStyle(TableStyle([
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (1, 0), (1, -1), 12),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
-            ('FONTSIZE', (2, 0), (2, -1), 12),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#333333')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles['Normal']))
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
         
         # Data table
         headers = ["Student", "Exam", "Subject", "Date", "Score", "Total", "%", "Result"]
@@ -4173,55 +3898,45 @@ def faculty_export_pdf():
         for r in results:
             pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
             result = "Pass" if is_pass(r["score"], r["total"], r["pass_percentage"] or 50) else "Fail"
+            
             data.append([
-                Paragraph(r["student_name"] or "—", wrap_style),
-                Paragraph(r["title"] or "—", wrap_style),
-                Paragraph(r["subject"] or "—", wrap_style),
-                Paragraph(str(r["exam_date"])[:10], wrap_style),
-                Paragraph(str(r["score"]), wrap_style),
-                Paragraph(str(r["total"]), wrap_style),
-                Paragraph(f"{pct}%", wrap_style),
-                Paragraph(result, wrap_style)
+                Paragraph(r["student_name"] or "—", styles['name']),
+                Paragraph(r["title"] or "—", styles['wrap']),
+                Paragraph(r["subject"] or "—", styles['wrap']),
+                Paragraph(format_datetime(r["exam_date"]), styles['wrap']),
+                Paragraph(str(r["score"]), styles['wrap']),
+                Paragraph(str(r["total"]), styles['wrap']),
+                Paragraph(f"{pct}%", styles['wrap']),
+                Paragraph(result, styles['wrap'])
             ])
         
-        table = Table(data, colWidths=[2.8*cm, 2.8*cm, 2.8*cm, 2.2*cm, 1.8*cm, 1.8*cm, 2.0*cm, 1.8*cm])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4f46e5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('LEFTPADDING', (0, 0), (-1, 0), 10),
-            ('RIGHTPADDING', (0, 0), (-1, 0), 10),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('LEFTPADDING', (0, 1), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-            ('ALIGN', (0, 1), (2, -1), 'LEFT'),
-            ('ALIGN', (3, 1), (3, -1), 'CENTER'),
-            ('ALIGN', (4, 1), (7, -1), 'CENTER'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('WORDWRAP', (3, 1), (3, -1), False),
-            ('WORDWRAP', (4, 1), (7, -1), False),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        # Get column widths and table style
+        col_widths = get_column_widths('faculty')
+        table_style = get_table_style(len(headers))
+        
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': False},   # Student - no wrap
+            {'align': 'LEFT', 'wrap': True},    # Exam - wrap
+            {'align': 'LEFT', 'wrap': True},    # Subject - wrap
+            {'align': 'CENTER', 'wrap': True},  # Date - wrap for date/time
+            {'align': 'CENTER', 'wrap': False}, # Score - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Total - no wrap
+            {'align': 'CENTER', 'wrap': False}, # % - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Result - no wrap
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
+        
+        table = Table(data, colWidths=col_widths)
+        table.setStyle(table_style)
         elements.append(table)
         
         # Footer
-        elements.append(Paragraph("<br/><br/><br/>", styles['Normal']))
-        footer_style = styles['Normal'].clone('footer')
-        footer_style.fontSize = 8
-        footer_style.textColor = colors.grey
-        footer_style.alignment = 1
-        elements.append(Paragraph("Generated by EduSphere Examination System", footer_style))
-        elements.append(Paragraph("This report is electronically generated and does not require a signature.", footer_style))
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
         
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        doc.build(elements)
         response.seek(0)
         return Response(
             response.getvalue(),
@@ -4497,112 +4212,39 @@ def student_analytics_export_pdf():
         results = conn.execute(query, params).fetchall()
         conn.close()
         
-        # Calculate available width correctly for portrait A4
-        PAGE_W, PAGE_H = A4
-        LEFT_MARGIN = 2.0 * cm
-        RIGHT_MARGIN = 1.05 * cm
-        AVAIL_W = PAGE_W - LEFT_MARGIN - RIGHT_MARGIN
+        # Create PDF with shared configuration
+        from flask import Response
+        from reportlab.platypus import Paragraph
+        from pdf_utils import (
+            create_pdf_document, get_pdf_styles, get_column_widths,
+            get_table_style, format_datetime, create_header_table,
+            create_summary_table, apply_column_alignment
+        )
         
-        # Create PDF with reportlab
         response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4, 
-                              rightMargin=RIGHT_MARGIN, leftMargin=LEFT_MARGIN, 
-                              topMargin=1.5*cm, bottomMargin=1.5*cm)
-        styles = getSampleStyleSheet()
-        wrap_style = styles['Normal'].clone('wrap')
-        wrap_style.fontSize = 7
-        wrap_style.leading = 9
-        wrap_style.textColor = colors.HexColor('#333333')
-        wrap_style.wordWrap = 'LTR'
-        wrap_style.splitLongWords = False
-        
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
         elements = []
         
-        # Header - logo+EduSphere top-right, report title left
+        # Header
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-
-        brand_style = styles['Normal'].clone('brand')
-        brand_style.fontSize = 11
-        brand_style.fontName = 'Helvetica-Bold'
-        brand_style.textColor = colors.HexColor('#4f46e5')
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right
-        hdr_title_style = styles['Normal'].clone('hdrtitle')
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = 'Helvetica-Bold'
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph('EduSphere', brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
-                ('LEFTPADDING',   (0, 0), (0, -1), 0),
-                ('RIGHTPADDING',  (0, 0), (0, -1), 0),
-                ('TOPPADDING',    (0, 0), (0, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0),  2),
-                ('BOTTOMPADDING', (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph('EduSphere', brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph('ANALYTICS REPORT', hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
-        )
-        hdr_table.setStyle(TableStyle([
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN',         (2, 0), (2,  0), 'RIGHT'),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-            ('TOPPADDING',    (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
+        elements.append(create_header_table('STUDENT ANALYTICS REPORT', logo_path))
         
         # Applied filters
         if any([sel_classroom, sel_exam, sel_subject]):
-            elements.append(Paragraph("<b>Applied Filters:</b>", styles['Heading2']))
-            if sel_classroom: elements.append(Paragraph(f"Classroom ID: {sel_classroom}", styles['Normal']))
-            if sel_exam: elements.append(Paragraph(f"Exam ID: {sel_exam}", styles['Normal']))
-            if sel_subject: elements.append(Paragraph(f"Subject: {sel_subject}", styles['Normal']))
-            elements.append(Paragraph("<br/>", styles['Normal']))
+            elements.append(Paragraph("<b>Applied Filters:</b>", styles['wrap']))
+            if sel_classroom: elements.append(Paragraph(f"Classroom ID: {sel_classroom}", styles['wrap']))
+            if sel_exam: elements.append(Paragraph(f"Exam ID: {sel_exam}", styles['wrap']))
+            if sel_subject: elements.append(Paragraph(f"Subject: {sel_subject}", styles['wrap']))
+            elements.append(Paragraph("<br/>", styles['wrap']))
         
         # Summary section
-        summary_heading_style = styles['Normal'].clone('sumhead')
-        summary_heading_style.fontSize = 18
-        summary_heading_style.fontName = 'Helvetica-Bold'
-        summary_heading_style.textColor = colors.black
-        summary_heading_style.alignment = 0
-        summary_heading_style.spaceBefore = 10
-        summary_heading_style.spaceAfter = 8
-        elements.append(Paragraph("SUMMARY", summary_heading_style))
-        
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         summary_data = [
-            ["", "Total Records:", str(len(results))],
-            ["", "Generated:",    datetime.now().strftime('%d %b %Y %H:%M')]
+            ("Total Records:", str(len(results))),
         ]
-        summary_table = Table(summary_data, colWidths=[AVAIL_W * 0.3, AVAIL_W * 0.3])
-        summary_table.setStyle(TableStyle([
-            ('ALIGN', (0, 0), (0, -1), 'LEFT'),
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (0, -1), 12),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica'),
-            ('FONTSIZE', (1, 0), (1, -1), 12),
-            ('TEXTCOLOR', (1, 0), (1, -1), colors.HexColor('#333333')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles['Normal']))
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
         
         # Data table
         headers = ["Student Name", "Exam Title", "Subject", "Classroom", "Score", "Total", "%", "Result"]
@@ -4612,57 +4254,43 @@ def student_analytics_export_pdf():
                 pct = round((r["score"] / r["total"]) * 100, 1)
                 result = "Pass" if is_pass(r["score"], r["total"], r["pass_percentage"] or 50) else "Fail"
                 data.append([
-                    Paragraph(r["student_name"] or "—", wrap_style),
-                    Paragraph(r["exam_title"] or "—", wrap_style),
-                    Paragraph(r["subject"] or "—", wrap_style),
-                    Paragraph(r["classroom_name"] or "—", wrap_style),
-                    Paragraph(str(r["score"]), wrap_style),
-                    Paragraph(str(r["total"]), wrap_style),
-                    Paragraph(f"{pct}%", wrap_style),
-                    Paragraph(result, wrap_style)
+                    Paragraph(r["student_name"] or "—", styles['name']),
+                    Paragraph(r["exam_title"] or "—", styles['wrap']),
+                    Paragraph(r["subject"] or "—", styles['wrap']),
+                    Paragraph(r["classroom_name"] or "—", styles['wrap']),
+                    Paragraph(str(r["score"]), styles['wrap']),
+                    Paragraph(str(r["total"]), styles['wrap']),
+                    Paragraph(f"{pct}%", styles['wrap']),
+                    Paragraph(result, styles['wrap'])
                 ])
         
-        # Use proportional column widths that sum to AVAIL_W
-        total_cols = len(headers)
-        col_widths = [AVAIL_W / total_cols] * total_cols
+        # Get column widths and table style
+        col_widths = get_column_widths('analytics')
+        table_style = get_table_style(len(headers))
         
-        # Assert that column widths sum to AVAIL_W or less
-        assert sum(col_widths) <= AVAIL_W, f"Column widths sum {sum(col_widths)} exceeds available width {AVAIL_W}"
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': False},   # Student Name - no wrap
+            {'align': 'LEFT', 'wrap': True},    # Exam Title - wrap
+            {'align': 'LEFT', 'wrap': True},    # Subject - wrap
+            {'align': 'LEFT', 'wrap': True},    # Classroom - wrap
+            {'align': 'CENTER', 'wrap': False}, # Score - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Total - no wrap
+            {'align': 'CENTER', 'wrap': False}, # % - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Result - no wrap
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
         
         table = Table(data, colWidths=col_widths)
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4f46e5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 8),
-            ('FONTSIZE', (0, 1), (-1, -1), 7),
-            ('VALIGN', (0, 0), (-1, -1), 'TOP'),
-            ('TOPPADDING', (0, 0), (-1, 0), 4),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
-            ('LEFTPADDING', (0, 0), (-1, -1), 3),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 3),
-            ('TOPPADDING', (0, 1), (-1, -1), 4),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 4),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-            ('ALIGN', (0, 1), (3, -1), 'LEFT'),
-            ('ALIGN', (4, 1), (7, -1), 'CENTER'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-        ]))
+        table.setStyle(table_style)
         elements.append(table)
         
         # Footer
-        elements.append(Paragraph("<br/><br/><br/>", styles['Normal']))
-        footer_style = styles['Normal'].clone('footer')
-        footer_style.fontSize = 8
-        footer_style.textColor = colors.grey
-        footer_style.alignment = 1
-        elements.append(Paragraph("Generated by EduSphere Examination System", footer_style))
-        elements.append(Paragraph("This report is electronically generated and does not require a signature.", footer_style))
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
         
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        doc.build(elements)
         response.seek(0)
         return Response(
             response.getvalue(),
@@ -5319,7 +4947,9 @@ def student_analytics_page():
         LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
         JOIN questions ON questions.exam_id=exams.id
         WHERE submissions.student_id=%s AND submissions.result_published=1
-        GROUP BY exams.id
+        GROUP BY users.id, users.name, exams.id, exams.title, exams.subject,
+               exams.classroom_id, classrooms.name, submissions.score,
+               exams.pass_percentage, submissions.submitted_at
         ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
     
@@ -5749,7 +5379,7 @@ def faculty_analytics():
     if ef: eq += " AND exams.id=%s";            ep.append(ef)
     if cf: eq += " AND exams.classroom_id=%s";  ep.append(cf)
     if sf: eq += " AND exams.subject=%s";       ep.append(sf)
-    eq += " GROUP BY exams.id ORDER BY exams.exam_date DESC"
+    eq += " GROUP BY exams.id, exams.title, exams.subject, exams.exam_date, classrooms.name ORDER BY exams.exam_date DESC"
     exam_stats = conn.execute(eq, ep).fetchall()
 
     # Subject-wise stats
@@ -5781,7 +5411,7 @@ def faculty_analytics():
     classroom_params = [fid]
     if ef: classroom_query += " AND exams.id=%s"; classroom_params.append(ef)
     if sf: classroom_query += " AND exams.subject=%s"; classroom_params.append(sf)
-    classroom_query += " GROUP BY classrooms.id ORDER BY classroom_name"
+    classroom_query += " GROUP BY classrooms.id, classrooms.name ORDER BY classroom_name"
     classroom_stats = conn.execute(classroom_query, classroom_params).fetchall()
 
     # Top 5 performers
@@ -5799,7 +5429,7 @@ def faculty_analytics():
     if ef: top_query += " AND exams.id=%s"; top_params.append(ef)
     if cf: top_query += " AND exams.classroom_id=%s"; top_params.append(cf)
     if sf: top_query += " AND exams.subject=%s"; top_params.append(sf)
-    top_query += " GROUP BY users.id ORDER BY avg_pct DESC LIMIT 5"
+    top_query += " GROUP BY users.id, users.name ORDER BY avg_pct DESC LIMIT 5"
     top_students = conn.execute(top_query, top_params).fetchall()
 
     # Bottom 5 performers
@@ -5817,7 +5447,7 @@ def faculty_analytics():
     if ef: low_query += " AND exams.id=%s"; low_params.append(ef)
     if cf: low_query += " AND exams.classroom_id=%s"; low_params.append(cf)
     if sf: low_query += " AND exams.subject=%s"; low_params.append(sf)
-    low_query += " GROUP BY users.id ORDER BY avg_pct ASC LIMIT 5"
+    low_query += " GROUP BY users.id, users.name ORDER BY avg_pct ASC LIMIT 5"
     low_students = conn.execute(low_query, low_params).fetchall()
 
     # Filter dropdowns
@@ -5914,146 +5544,89 @@ def faculty_analytics_export_pdf():
         conn.close()
         total_attempts = sum(r["attempts"] or 0 for r in rows)
 
-        response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4,
-                                rightMargin=1.5*cm, leftMargin=1.5*cm,
-                                topMargin=30, bottomMargin=30)
-        styles = getSampleStyleSheet()
-        wrap_style = styles["Normal"].clone("wrap")
-        wrap_style.fontSize = 10
-        wrap_style.leading = 14
-        wrap_style.textColor = colors.HexColor("#333333")
-        wrap_style.wordWrap = "LTR"
-        elements = []
-
-        logo_path = os.path.join(os.path.dirname(__file__), "static", "images", "logo.png")
-
-        # Title centered across full width, logo+EduSphere top-right corner
-        brand_style = styles["Normal"].clone("brand")
-        brand_style.fontSize = 11
-        brand_style.fontName = "Helvetica-Bold"
-        brand_style.textColor = colors.HexColor("#4f46e5")
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right
-        hdr_title_style = styles["Normal"].clone("hdrtitle")
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = "Helvetica-Bold"
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph("EduSphere", brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ("ALIGN",         (0, 0), (0, -1), "CENTER"),
-                ("LEFTPADDING",   (0, 0), (0, -1), 0),
-                ("RIGHTPADDING",  (0, 0), (0, -1), 0),
-                ("TOPPADDING",    (0, 0), (0, -1), 0),
-                ("BOTTOMPADDING", (0, 0), (0, 0),  2),
-                ("BOTTOMPADDING", (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph("EduSphere", brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph("ANALYTICS REPORT", hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
+        # Create PDF with shared configuration
+        from flask import Response
+        from reportlab.platypus import Paragraph
+        from pdf_utils import (
+            create_pdf_document, get_pdf_styles, get_column_widths,
+            get_table_style, format_datetime, create_header_table,
+            create_summary_table, apply_column_alignment
         )
-        hdr_table.setStyle(TableStyle([
-            ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
-            ("ALIGN",         (2, 0), (2,  0), "RIGHT"),
-            ("LEFTPADDING",   (0, 0), (-1, -1), 0),
-            ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
-            ("TOPPADDING",    (0, 0), (-1, -1), 0),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
-
+        
+        response = io.BytesIO()
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
+        elements = []
+        
+        # Header
+        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
+        elements.append(create_header_table('FACULTY ANALYTICS REPORT', logo_path))
+        
+        # Applied filters
         if any([ef, cf, sf]):
-            elements.append(Paragraph("<b>Applied Filters:</b>", styles["Heading2"]))
-            if ef: elements.append(Paragraph(f"Exam ID: {ef}", styles["Normal"]))
-            if cf: elements.append(Paragraph(f"Classroom ID: {cf}", styles["Normal"]))
-            if sf: elements.append(Paragraph(f"Subject: {sf}", styles["Normal"]))
-            elements.append(Paragraph("<br/>", styles["Normal"]))
-
-        sum_h = styles["Normal"].clone("sumhead")
-        sum_h.fontSize = 18
-        sum_h.fontName = "Helvetica-Bold"
-        sum_h.textColor = colors.black
-        sum_h.alignment = 0
-        sum_h.spaceBefore = 10
-        sum_h.spaceAfter = 8
-        elements.append(Paragraph("SUMMARY", sum_h))
-        elements.append(Paragraph("<br/>", styles["Normal"]))
-
+            elements.append(Paragraph("<b>Applied Filters:</b>", styles['wrap']))
+            if ef: elements.append(Paragraph(f"Exam ID: {ef}", styles['wrap']))
+            if cf: elements.append(Paragraph(f"Classroom ID: {cf}", styles['wrap']))
+            if sf: elements.append(Paragraph(f"Subject: {sf}", styles['wrap']))
+            elements.append(Paragraph("<br/>", styles['wrap']))
+        
+        # Summary section
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         summary_data = [
-            ["", "Total Exams:",    str(len(rows))],
-            ["", "Total Attempts:", str(total_attempts)],
-            ["", "Generated:",      datetime.now().strftime("%d %b %Y %H:%M")],
+            ("Total Exams:", str(len(rows))),
+            ("Total Attempts:", str(total_attempts)),
         ]
-        summary_table = Table(summary_data, colWidths=[2*cm, 4*cm, 6*cm])
-        summary_table.setStyle(TableStyle([
-            ("ALIGN",         (1,0), (1,-1), "LEFT"),
-            ("ALIGN",         (2,0), (2,-1), "LEFT"),
-            ("FONTNAME",      (1,0), (1,-1), "Helvetica-Bold"),
-            ("FONTSIZE",      (1,0), (1,-1), 12),
-            ("FONTNAME",      (2,0), (2,-1), "Helvetica"),
-            ("FONTSIZE",      (2,0), (2,-1), 12),
-            ("TEXTCOLOR",     (2,0), (2,-1), colors.HexColor("#333333")),
-            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
-            ("BOTTOMPADDING", (0,0), (-1,-1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles["Normal"]))
-
-        tbl_headers = ["Exam", "Subject", "Date", "Attempts", "Avg Score", "Max", "Min", "Avg %"]
-        data = [tbl_headers]
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
+        
+        # Data table
+        headers = ["Exam", "Subject", "Date", "Attempts", "Avg Score", "Max", "Min", "Avg %"]
+        data = [headers]
         for r in rows:
             try:
                 total_q   = r["total_q"] or 1
                 avg_score = r["avg_score"] or 0
                 avg_pct   = round(avg_score / total_q * 100, 1) if total_q and avg_score else 0
                 data.append([
-                    Paragraph(r["title"]   or "—", wrap_style),
-                    Paragraph(r["subject"] or "—", wrap_style),
-                    Paragraph(str(r["exam_date"] or "—")[:10], wrap_style),
-                    Paragraph(str(r["attempts"] or 0), wrap_style),
-                    Paragraph(str(round(avg_score,1) if avg_score else 0), wrap_style),
-                    Paragraph(str(r["max_score"] or 0), wrap_style),
-                    Paragraph(str(r["min_score"] or 0), wrap_style),
-                    Paragraph(f"{avg_pct}%", wrap_style),
+                    Paragraph(r["title"] or "—", styles['wrap']),
+                    Paragraph(r["subject"] or "—", styles['wrap']),
+                    Paragraph(format_datetime(r["exam_date"]), styles['wrap']),
+                    Paragraph(str(r["attempts"] or 0), styles['wrap']),
+                    Paragraph(str(round(avg_score,1) if avg_score else 0), styles['wrap']),
+                    Paragraph(str(r["max_score"] or 0), styles['wrap']),
+                    Paragraph(str(r["min_score"] or 0), styles['wrap']),
+                    Paragraph(f"{avg_pct}%", styles['wrap']),
                 ])
             except Exception as re: app.logger.error(f"Analytics PDF row: {re}"); continue
         if len(data) == 1: data.append(["—","—","—","—","—","—","—","—"])
-        col_widths = [3.5*cm, 2.4*cm, 3.0*cm, 1.8*cm, 2.2*cm, 1.5*cm, 1.5*cm, 2.1*cm]
+        
+        # Get column widths and table style
+        col_widths = get_column_widths('analytics')
+        table_style = get_table_style(len(headers))
+        
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': True},    # Exam - wrap
+            {'align': 'LEFT', 'wrap': True},    # Subject - wrap
+            {'align': 'CENTER', 'wrap': True},  # Date - wrap for date/time
+            {'align': 'CENTER', 'wrap': False}, # Attempts - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Avg Score - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Max - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Min - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Avg % - no wrap
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
+        
         table = Table(data, colWidths=col_widths)
-        table.setStyle(TableStyle([
-            ("BACKGROUND",    (0,0), (-1,0),  colors.HexColor("#4f46e5")),
-            ("TEXTCOLOR",     (0,0), (-1,0),  colors.whitesmoke),
-            ("ALIGN",         (0,0), (-1,-1), "CENTER"),
-            ("FONTNAME",      (0,0), (-1,0),  "Helvetica-Bold"),
-            ("FONTSIZE",      (0,0), (-1,0),  11),
-            ("TOPPADDING",    (0,0), (-1,0),  12), ("BOTTOMPADDING",(0,0),(-1,0),12),
-            ("LEFTPADDING",   (0,0), (-1,0),  10), ("RIGHTPADDING", (0,0),(-1,0),10),
-            ("TOPPADDING",    (0,1), (-1,-1), 10), ("BOTTOMPADDING",(0,1),(-1,-1),10),
-            ("LEFTPADDING",   (0,1), (-1,-1), 8), ("RIGHTPADDING", (0,1),(-1,-1),8),
-            ("ROWBACKGROUNDS",(0,1), (-1,-1), [colors.white, colors.HexColor("#F8FAFC")]),
-            ("GRID",          (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
-            ("ALIGN",         (0,1), (1,-1),  "LEFT"),
-            ("VALIGN",        (0,0), (-1,-1), "MIDDLE"),
-        ]))
+        table.setStyle(table_style)
         elements.append(table)
-        elements.append(Paragraph("<br/><br/><br/>", styles["Normal"]))
-        fs = styles["Normal"].clone("foot"); fs.fontSize=8; fs.textColor=colors.grey; fs.alignment=1
-        elements.append(Paragraph("Generated by EduSphere Examination System", fs))
-        elements.append(Paragraph("This report is electronically generated and does not require a signature.", fs))
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        
+        # Footer
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
+        
+        doc.build(elements)
         response.seek(0)
         return Response(response.getvalue(), mimetype="application/pdf",
                         headers={"Content-Disposition": 'attachment; filename="faculty_analytics.pdf"'})
@@ -6084,7 +5657,9 @@ def student_results():
         JOIN questions ON questions.exam_id=exams.id
         JOIN users as faculty ON faculty.id=exams.faculty_id
         WHERE submissions.student_id=%s
-        GROUP BY exams.id ORDER BY submissions.submitted_at DESC
+        GROUP BY exams.id, exams.title, exams.subject, exams.exam_date, exams.faculty_id,
+               submissions.score, submissions.submitted_at, submissions.result_published,
+               exams.pass_percentage, faculty.name ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
     student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
     conn.close()
@@ -6110,7 +5685,9 @@ def student_results_export():
         JOIN questions ON questions.exam_id=exams.id
         JOIN users as faculty ON faculty.id=exams.faculty_id
         WHERE submissions.student_id=%s
-        GROUP BY exams.id ORDER BY submissions.submitted_at DESC
+        GROUP BY exams.id, exams.title, exams.subject, exams.exam_date,
+               submissions.score, submissions.submitted_at, submissions.result_published,
+               exams.pass_percentage, faculty.name ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
     student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
     conn.close()
@@ -6177,101 +5754,36 @@ def student_export_pdf():
         fail_count = sum(1 for r in published_results if r["total"] and not is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
         avg_pct = sum(round(r["score"]/r["total"]*100,1) if r["total"] else 0 for r in published_results) / len(published_results) if published_results else 0
         
-        # Create PDF with reportlab
-        response = io.BytesIO()
-        doc = SimpleDocTemplate(response, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=30, bottomMargin=30)
-        styles = getSampleStyleSheet()
-        wrap_style = styles['Normal'].clone('wrap')
-        wrap_style.fontSize = 10
-        wrap_style.leading = 14
-        wrap_style.textColor = colors.HexColor('#333333')
-        wrap_style.wordWrap = 'LTR'
-        wrap_style.splitLongWords = False
+        # Create PDF with shared configuration
+        from flask import Response
+        from reportlab.platypus import Paragraph
+        from pdf_utils import (
+            create_pdf_document, get_pdf_styles, get_column_widths,
+            get_table_style, format_datetime, create_header_table,
+            create_summary_table, apply_column_alignment
+        )
         
+        response = io.BytesIO()
+        doc = create_pdf_document(response)
+        styles = get_pdf_styles()
         elements = []
         
-        # Header — logo+EduSphere top-right, report title left
+        # Header
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-
-        brand_style = styles['Normal'].clone('brand')
-        brand_style.fontSize = 11
-        brand_style.fontName = 'Helvetica-Bold'
-        brand_style.textColor = colors.HexColor('#4f46e5')
-        brand_style.alignment = 1
-        brand_style.spaceAfter = 0
-
-        # Single-row header: title left, logo+EduSphere right — same vertical line
-        hdr_title_style = styles['Normal'].clone('hdrtitle')
-        hdr_title_style.fontSize = 24
-        hdr_title_style.fontName = 'Helvetica-Bold'
-        hdr_title_style.textColor = colors.black
-        hdr_title_style.alignment = 1
-        hdr_title_style.leading = 28
-
-        if os.path.exists(logo_path):
-            logo = Image(logo_path, width=2.0*cm, height=2.0*cm)
-            logo_cell = Table(
-                [[logo], [Paragraph('EduSphere', brand_style)]],
-                colWidths=[2.5*cm]
-            )
-            logo_cell.setStyle(TableStyle([
-                ('ALIGN',         (0, 0), (0, -1), 'CENTER'),
-                ('LEFTPADDING',   (0, 0), (0, -1), 0),
-                ('RIGHTPADDING',  (0, 0), (0, -1), 0),
-                ('TOPPADDING',    (0, 0), (0, -1), 0),
-                ('BOTTOMPADDING', (0, 0), (0, 0),  2),
-                ('BOTTOMPADDING', (0, 1), (0, 1),  0),
-            ]))
-        else:
-            logo_cell = Paragraph('EduSphere', brand_style)
-
-        hdr_table = Table(
-            [["", Paragraph('STUDENT RESULT HISTORY REPORT', hdr_title_style), logo_cell]],
-            colWidths=[3.5*cm, 11*cm, 3.5*cm]
-        )
-        hdr_table.setStyle(TableStyle([
-            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-            ('ALIGN',         (2, 0), (2,  0), 'RIGHT'),
-            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
-            ('TOPPADDING',    (0, 0), (-1, -1), 0),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
-        ]))
-        elements.append(hdr_table)
+        elements.append(create_header_table('STUDENT RESULT HISTORY REPORT', logo_path))
         
         # Summary section
-        summary_heading_style = styles['Normal'].clone('sumhead')
-        summary_heading_style.fontSize = 18
-        summary_heading_style.fontName = 'Helvetica-Bold'
-        summary_heading_style.textColor = colors.black
-        summary_heading_style.alignment = 0
-        summary_heading_style.spaceBefore = 10
-        summary_heading_style.spaceAfter = 8
-        elements.append(Paragraph('SUMMARY', summary_heading_style))
-        
+        elements.append(Paragraph("SUMMARY", styles['summary_heading']))
         summary_data = [
-            ["", "Total Exams:",        str(total_count)],
-            ["", "Published Results:",   str(len(published_results))],
-            ["", "Passed:",              str(pass_count)],
-            ["", "Failed:",              str(fail_count)],
-            ["", "Pending:",             str(pending_count)],
-            ["", "Average %:",           f"{avg_pct:.1f}%"],
-            ["", "Generated:",           datetime.now().strftime('%d %b %Y %H:%M')]
+            ("Total Exams:", str(total_count)),
+            ("Published Results:", str(len(published_results))),
+            ("Passed:", str(pass_count)),
+            ("Failed:", str(fail_count)),
+            ("Pending:", str(pending_count)),
+            ("Average %:", f"{avg_pct:.1f}%"),
         ]
-        summary_table = Table(summary_data, colWidths=[2*cm, 4*cm, 6*cm])
-        summary_table.setStyle(TableStyle([
-            ('ALIGN', (1, 0), (1, -1), 'LEFT'),
-            ('ALIGN', (2, 0), (2, -1), 'LEFT'),
-            ('FONTNAME', (1, 0), (1, -1), 'Helvetica-Bold'),
-            ('FONTSIZE', (1, 0), (1, -1), 12),
-            ('FONTNAME', (2, 0), (2, -1), 'Helvetica'),
-            ('FONTSIZE', (2, 0), (2, -1), 12),
-            ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#333333')),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
-        ]))
-        elements.append(summary_table)
-        elements.append(Paragraph("<br/><br/>", styles['Normal']))
+        elements.append(create_summary_table(summary_data))
+        elements.append(Paragraph("<br/><br/>", styles['wrap']))
         
         # Data table
         headers = ["Exam", "Subject", "Faculty", "Date", "Score", "Total", "%", "Result"]
@@ -6280,54 +5792,43 @@ def student_export_pdf():
             pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
             result = "Pass" if is_pass(r["score"], r["total"], r["pass_percentage"] or 50) else "Fail"
             data.append([
-                Paragraph(r["title"] or "—", wrap_style),
-                Paragraph(r["subject"] or "—", wrap_style),
-                Paragraph(r["faculty_name"] or "—", wrap_style),
-                Paragraph(str(r["exam_date"])[:10], wrap_style),
-                Paragraph(str(r["score"]), wrap_style),
-                Paragraph(str(r["total"]), wrap_style),
-                Paragraph(f"{pct}%", wrap_style),
-                Paragraph(result, wrap_style)
+                Paragraph(r["title"] or "—", styles['wrap']),
+                Paragraph(r["subject"] or "—", styles['wrap']),
+                Paragraph(r["faculty_name"] or "—", styles['wrap']),
+                Paragraph(format_datetime(r["exam_date"]), styles['wrap']),
+                Paragraph(str(r["score"]), styles['wrap']),
+                Paragraph(str(r["total"]), styles['wrap']),
+                Paragraph(f"{pct}%", styles['wrap']),
+                Paragraph(result, styles['wrap'])
             ])
         
-        table = Table(data, colWidths=[3.5*cm, 2.8*cm, 2.5*cm, 2.5*cm, 1.7*cm, 1.7*cm, 1.7*cm, 1.6*cm])
-        table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4f46e5')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 11),
-            ('LEFTPADDING', (0, 0), (-1, 0), 10),
-            ('RIGHTPADDING', (0, 0), (-1, 0), 10),
-            ('TOPPADDING', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('LEFTPADDING', (0, 1), (-1, -1), 8),
-            ('RIGHTPADDING', (0, 1), (-1, -1), 8),
-            ('TOPPADDING', (0, 1), (-1, -1), 8),
-            ('BOTTOMPADDING', (0, 1), (-1, -1), 8),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8FAFC')]),
-            ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#D1D5DB')),
-            ('ALIGN', (0, 1), (2, -1), 'LEFT'),
-            ('ALIGN', (3, 1), (3, -1), 'CENTER'),
-            ('ALIGN', (4, 1), (7, -1), 'CENTER'),
-            ('WORDWRAP', (0, 0), (-1, -1), True),
-            ('WORDWRAP', (3, 1), (3, -1), False),
-            ('WORDWRAP', (4, 1), (7, -1), False),
-            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
+        # Get column widths and table style
+        col_widths = get_column_widths('student')
+        table_style = get_table_style(len(headers))
+        
+        # Apply column-specific alignment and word wrap
+        column_configs = [
+            {'align': 'LEFT', 'wrap': True},    # Exam - wrap
+            {'align': 'LEFT', 'wrap': True},    # Subject - wrap
+            {'align': 'LEFT', 'wrap': True},    # Faculty - wrap
+            {'align': 'CENTER', 'wrap': True},  # Date - wrap for date/time
+            {'align': 'CENTER', 'wrap': False}, # Score - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Total - no wrap
+            {'align': 'CENTER', 'wrap': False}, # % - no wrap
+            {'align': 'CENTER', 'wrap': False}, # Result - no wrap
+        ]
+        table_style = apply_column_alignment(table_style, column_configs)
+        
+        table = Table(data, colWidths=col_widths)
+        table.setStyle(table_style)
         elements.append(table)
         
         # Footer
-        elements.append(Paragraph("<br/>", styles['Normal']))
-        footer_style = styles['Normal'].clone('footer')
-        footer_style.fontSize = 8
-        footer_style.textColor = colors.grey
-        footer_style.alignment = 1
-        elements.append(Paragraph("Generated by EduSphere Examination System", footer_style))
-        elements.append(Paragraph("This document is electronically generated and does not require a signature.", footer_style))
+        elements.append(Paragraph("<br/><br/><br/>", styles['wrap']))
+        elements.append(Paragraph("Generated by EduSphere Examination System", styles['footer']))
+        elements.append(Paragraph("This report is electronically generated and does not require a signature.", styles['footer']))
         
-        doc.build(elements, onFirstPage=_add_pdf_footer, onLaterPages=_add_pdf_footer)
+        doc.build(elements)
         response.seek(0)
         return Response(
             response.getvalue(),
@@ -6361,7 +5862,7 @@ def faculty_integrity():
     params = [fid]
     if ef:
         query += " AND exams.id=%s"; params.append(ef)
-    query += " GROUP BY submissions.id ORDER BY submissions.tab_switches DESC"
+    query += " GROUP BY submissions.id, users.name, exams.title, exams.id, submissions.tab_switches, submissions.score, submissions.submitted_at ORDER BY submissions.tab_switches DESC"
     flags = conn.execute(query, params).fetchall()
     my_exams = conn.execute("SELECT id, title FROM exams WHERE faculty_id=%s ORDER BY title", (fid,)).fetchall()
     conn.close()

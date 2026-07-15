@@ -82,7 +82,7 @@
     <thead>
       <tr>
         <th>Student Name</th><th>Registration No.</th><th>Marks Obtained</th>
-        <th>Total Marks</th><th>Percentage</th><th>Result</th><th>Published</th><th>Attempt Date</th>
+        <th>Total Marks</th><th>Percentage</th><th>Result</th><th>Published</th><th class="date-col">Attempt Date</th>
       </tr>
     </thead>
     <tbody>
@@ -103,7 +103,7 @@
           {% if r.result_published %}<span class="badge bdg-success">Published</span>
           {% else %}<span class="badge bdg-warning">Pending</span>{% endif %}
         </td>
-        <td class="text-muted text-sm">{{ r.submitted_at[:16] if r.submitted_at else '—' }}</td>
+        <td class="text-muted text-sm">{{ r.submitted_at|format_datetime if r.submitted_at else '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>

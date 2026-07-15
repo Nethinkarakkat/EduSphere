@@ -96,13 +96,13 @@
   {% if recent_results %}
   <div class="tbl-wrap">
     <table class="tbl">
-      <thead><tr><th>Exam Title</th><th>Classroom</th><th>Date</th><th>Score</th><th>Percentage</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Exam Title</th><th>Classroom</th><th class="date-col">Date</th><th>Score</th><th>Percentage</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         {% for r in recent_results[:5] %}
         <tr>
           <td class="font-semi">{{ r.exam_title }}</td>
           <td>{{ r.classroom_name }}</td>
-          <td>{{ r.date[:10] if r.date else '—' }}</td>
+          <td>{{ r.date|format_datetime('%Y-%m-%d') if r.date else '—' }}</td>
           <td>{{ r.score }}</td>
           <td>{{ r.percentage }}%</td>
           <td>

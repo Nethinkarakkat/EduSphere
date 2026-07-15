@@ -66,7 +66,7 @@
   </div>
   {% if users %}
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>ID</th><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Joined</th><th>Actions</th></tr></thead>
+    <thead><tr><th>ID</th><th>Name</th><th class="email-col">Email</th><th>Role</th><th>Status</th><th class="date-col">Joined</th><th>Actions</th></tr></thead>
     <tbody>
       {% for u in users %}
       <tr>
@@ -82,7 +82,7 @@
           {% if u.approved==1 %}<span class="badge bdg-success"><i class="bi bi-check-circle"></i> Active</span>
           {% else %}<span class="badge bdg-warning"><i class="bi bi-clock"></i> Pending</span>{% endif %}
         </td>
-        <td class="text-muted text-sm">{{ u.created_at[:10] if u.created_at else '—' }}</td>
+        <td class="text-muted text-sm">{{ u.created_at|format_datetime('%Y-%m-%d') if u.created_at else '—' }}</td>
         <td class="flex gap-2">
           {% if u.role=='faculty' and u.approved==0 %}
           <a href="/approve/{{ u.id }}" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Approve</a>

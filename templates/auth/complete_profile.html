@@ -184,7 +184,7 @@
         </div>
         <div class="info-item">
           <div class="lbl">Joined</div>
-          <div class="val">{{ user.created_at[:10] if user.created_at else '—' }}</div>
+          <div class="val">{{ user.created_at|format_datetime('%Y-%m-%d') if user.created_at else '—' }}</div>
         </div>
       </div>
 

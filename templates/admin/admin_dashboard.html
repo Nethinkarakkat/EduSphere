@@ -119,7 +119,7 @@
     <span class="badge bdg-warning">{{ pending|length }}</span>
   </div>
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Name</th><th>Email</th><th>Action</th></tr></thead>
+    <thead><tr><th>Name</th><th class="email-col">Email</th><th>Action</th></tr></thead>
     <tbody>
       {% for p in pending %}
       <tr>
@@ -149,7 +149,7 @@
             <span class="badge {% if a.role=='admin' %}bdg-primary{% elif a.role=='faculty' %}bdg-info{% else %}bdg-success{% endif %}" style="margin-left:4px;font-size:10px;">{{ a.role }}</span>
           </td>
           <td>{{ a.action }}</td>
-          <td class="text-muted text-sm" style="white-space:nowrap;">{{ a.timestamp[:16] if a.timestamp else '' }}</td>
+          <td class="text-muted text-sm" style="white-space:nowrap;">{{ a.timestamp|format_datetime if a.timestamp else '' }}</td>
         </tr>
         {% else %}
         <tr><td colspan="3" class="text-center text-muted" style="padding:20px;">No activity yet</td></tr>

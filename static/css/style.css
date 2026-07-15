@@ -310,9 +310,22 @@ table.tbl  { width: 100%; border-collapse: collapse; }
   text-transform: uppercase; letter-spacing: .04em;
   border-bottom: 1px solid var(--border-color); text-align: left;
 }
-.tbl td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); font-size: 13.5px; }
+.tbl td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); font-size: 13.5px; word-wrap: break-word; overflow-wrap: break-word; }
 .tbl tr:last-child td { border-bottom: none; }
 .tbl tr:hover td { background: var(--page-bg); }
+
+/* Date column - prevent wrapping */
+.tbl td.date-col,
+.tbl th.date-col {
+  white-space: nowrap;
+}
+
+/* Email column - ensure proper wrapping */
+.tbl td.email-col,
+.tbl th.email-col {
+  word-break: break-all;
+  max-width: 300px;
+}
 
 /* ── Badges ──────────────────────────────── */
 .badge {

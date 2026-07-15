@@ -64,7 +64,7 @@
     {% if results %}
     <div class="tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Exam</th><th>Subject</th><th>Classroom</th><th>Score</th><th>Percentage</th><th>Date</th></tr></thead>
+        <thead><tr><th>Exam</th><th>Subject</th><th>Classroom</th><th>Score</th><th>Percentage</th><th class="date-col">Date</th></tr></thead>
         <tbody>
           {% for r in results %}
           {% set pct = ((r.score/r.total)*100)|round(1) if r.total else 0 %}
@@ -75,7 +75,7 @@
             <td>{{ r.classroom_name or '—' }}</td>
             <td>{{ r.score }}/{{ r.total }}</td>
             <td><span class="font-bold" style="color:{% if passed %}var(--success){% else %}var(--danger){% endif %};">{{ pct }}%</span></td>
-            <td>{{ r.submitted_at[:10] if r.submitted_at else '—' }}</td>
+            <td>{{ r.submitted_at|format_datetime('%Y-%m-%d') if r.submitted_at else '—' }}</td>
           </tr>
           {% endfor %}
         </tbody>

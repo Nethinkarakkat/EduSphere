@@ -217,15 +217,15 @@
     <div class="card-body">
       <div class="info-item">
         <span class="info-label">Last Login</span>
-        <span class="info-value">{{ user['last_login'][:16] if user and 'last_login' in user and user['last_login'] else '—' }}</span>
+        <span class="info-value">{{ user['last_login']|format_datetime if user and 'last_login' in user and user['last_login'] else '—' }}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Account Created</span>
-        <span class="info-value">{{ user['created_at'][:10] if user and 'created_at' in user and user['created_at'] else '—' }}</span>
+        <span class="info-value">{{ user['created_at']|format_datetime('%Y-%m-%d') if user and 'created_at' in user and user['created_at'] else '—' }}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Last Profile Update</span>
-        <span class="info-value">{{ user['last_profile_update'][:16] if user and 'last_profile_update' in user and user['last_profile_update'] else '—' }}</span>
+        <span class="info-value">{{ user['last_profile_update']|format_datetime if user and 'last_profile_update' in user and user['last_profile_update'] else '—' }}</span>
       </div>
     </div>
   </div>

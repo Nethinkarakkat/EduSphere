@@ -21,7 +21,7 @@
       <div style="font-size:15px;font-weight:700;margin-bottom:6px;">{{ r.name }}</div>
       <div class="text-sm text-muted mb-3">{{ r.subject or 'No subject' }}</div>
       <div class="text-sm text-muted mb-3">Faculty: {{ r.faculty_name or '—' }}</div>
-      <div class="text-sm text-muted mb-3">Created: {{ r.created_at[:10] if r.created_at else '—' }}</div>
+      <div class="text-sm text-muted mb-3">Created: {{ r.created_at|format_datetime('%Y-%m-%d') if r.created_at else '—' }}</div>
       <!-- Classroom code -->
       <div class="classroom-code-card">
         <div>

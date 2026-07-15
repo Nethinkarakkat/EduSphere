@@ -78,7 +78,7 @@
   </div>
   {% if exam_stats %}
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Exam</th><th>Classroom</th><th>Subject</th><th>Date</th><th>Attempts</th><th>Avg Score</th><th>Avg %</th><th>Max</th><th>Min</th><th>Total Marks</th></tr></thead>
+    <thead><tr><th>Exam</th><th>Classroom</th><th>Subject</th><th class="date-col">Date</th><th>Attempts</th><th>Avg Score</th><th>Avg %</th><th>Max</th><th>Min</th><th>Total Marks</th></tr></thead>
     <tbody>
       {% for e in exam_stats %}
       {% set avg_pct = ((e.avg_score/e.total_q)*100)|round(1) if e.total_q and e.avg_score else 0 %}

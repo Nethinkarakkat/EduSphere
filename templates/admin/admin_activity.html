@@ -58,7 +58,7 @@
           {% else %}<span class="badge bdg-success">Student</span>{% endif %}
         </td>
         <td>{{ l.action }}</td>
-        <td class="text-muted text-sm">{{ l.timestamp[:16] if l.timestamp else '—' }}</td>
+        <td class="text-muted text-sm">{{ l.timestamp|format_datetime if l.timestamp else '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>

@@ -44,7 +44,7 @@
     {% if exams %}
     <div class="tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Exam Title</th><th>Subject</th><th>Date</th><th>Duration</th><th>Status</th><th>Submissions</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Exam Title</th><th>Subject</th><th class="date-col">Date</th><th>Duration</th><th>Status</th><th>Submissions</th><th>Actions</th></tr></thead>
         <tbody>
           {% for e in exams %}
           <tr>
@@ -102,12 +102,12 @@
     {% if submissions %}
     <div class="tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Exam Title</th><th>Date</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Exam Title</th><th class="date-col">Date</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           {% for s in submissions %}
           <tr>
             <td class="font-semi">{{ s.exam_title }}</td>
-            <td>{{ s.submitted_at[:10] if s.submitted_at else '—' }}</td>
+            <td>{{ s.submitted_at|format_datetime('%Y-%m-%d') if s.submitted_at else '—' }}</td>
             <td>
               {% if s.result_published == 1 %}
               <span class="font-bold" style="color:var(--primary);">{{ s.score }}</span>

@@ -94,7 +94,7 @@
             <td><strong>{{ c.name }}</strong></td>
             <td>{{ c.subject or '—' }}</td>
             <td><code style="background:var(--hover);padding:2px 6px;border-radius:4px;font-size:12px;">{{ c.code }}</code></td>
-            <td style="color:var(--muted);font-size:13px;">{{ c.archived_at[:10] if c.archived_at else '—' }}</td>
+            <td style="color:var(--muted);font-size:13px;">{{ c.archived_at|format_datetime('%Y-%m-%d') if c.archived_at else '—' }}</td>
             <td style="display:flex;gap:8px;align-items:center;">
               <a href="/faculty/archive/restore_classroom/{{ c.id }}" class="btn-restore"
                  onclick="return confirm('Restore classroom and all its exams?')">
@@ -135,8 +135,8 @@
             <th>#</th>
             <th>Exam Title</th>
             <th>Classroom</th>
-            <th>Date</th>
-            <th>Archived On</th>
+            <th class="date-col">Date</th>
+            <th class="date-col">Archived On</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -147,7 +147,7 @@
             <td><strong>{{ e.title }}</strong></td>
             <td>{{ e.classroom_name or '—' }}</td>
             <td style="color:var(--muted);font-size:13px;">{{ e.exam_date or '—' }}</td>
-            <td style="color:var(--muted);font-size:13px;">{{ e.archived_at[:10] if e.archived_at else '—' }}</td>
+            <td style="color:var(--muted);font-size:13px;">{{ e.archived_at|format_datetime('%Y-%m-%d') if e.archived_at else '—' }}</td>
             <td style="display:flex;gap:8px;align-items:center;">
               <a href="/faculty/archive/restore_exam/{{ e.id }}" class="btn-restore"
                  onclick="return confirm('Restore exam?')">

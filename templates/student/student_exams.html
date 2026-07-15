@@ -17,7 +17,7 @@
     {% if available_exams %}
     <div class="tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Exam Title</th><th>Subject</th><th>Classroom</th><th>Faculty</th><th>Date</th><th>Duration</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Exam Title</th><th>Subject</th><th>Classroom</th><th>Faculty</th><th class="date-col">Date</th><th>Duration</th><th>Actions</th></tr></thead>
         <tbody>
           {% for e in available_exams %}
           <tr>
@@ -53,7 +53,7 @@
     {% if completed_exams %}
     <div class="tbl-wrap">
       <table class="tbl">
-        <thead><tr><th>Exam Title</th><th>Subject</th><th>Classroom</th><th>Faculty</th><th>Date</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Exam Title</th><th>Subject</th><th>Classroom</th><th>Faculty</th><th class="date-col">Date</th><th>Score</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody>
           {% for e in completed_exams %}
           <tr>
@@ -61,7 +61,7 @@
             <td>{{ e.subject or '—' }}</td>
             <td>{{ e.classroom_name }}</td>
             <td>{{ e.faculty_name }}</td>
-            <td>{{ e.submitted_at[:10] if e.submitted_at else '—' }}</td>
+            <td>{{ e.submitted_at|format_datetime('%Y-%m-%d') if e.submitted_at else '—' }}</td>
             <td>
               {% if e.result_published == 1 %}
               <span class="font-bold" style="color:var(--primary);">{{ e.score }}</span>

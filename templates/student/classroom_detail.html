@@ -34,14 +34,14 @@
     </div>
     {% if members %}
     <div class="tbl-wrap"><table class="tbl">
-      <thead><tr><th>Name</th><th>Registration No.</th><th>Email</th><th>Joined Date</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Registration No.</th><th class="email-col">Email</th><th class="date-col">Joined Date</th><th></th></tr></thead>
       <tbody>
         {% for m in members %}
         <tr>
           <td class="font-semi">{{ m.name }}</td>
           <td class="text-muted">{{ m.reg_number if m.reg_number else '—' }}</td>
           <td class="text-muted">{{ m.email }}</td>
-          <td class="text-muted text-sm">{{ m.joined_at[:10] if m.joined_at else '—' }}</td>
+          <td class="text-muted text-sm">{{ m.joined_at|format_datetime('%Y-%m-%d') if m.joined_at else '—' }}</td>
           <td>
             {% if session.get('role') == 'faculty' %}
             <a href="/classrooms/{{ room.id }}/remove/{{ m.id }}" class="btn btn-danger btn-sm"
@@ -93,7 +93,7 @@
     {% if exams %}
     <div class="tbl-wrap"><table class="tbl">
       <thead>
-        <tr><th>Title</th><th>Date</th><th>Questions</th><th>Status</th><th>Actions</th></tr>
+        <tr><th>Title</th><th class="date-col">Date</th><th>Questions</th><th>Status</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for e in exams %}

@@ -138,7 +138,7 @@
     </div>
   </div>
   <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>Student</th><th>Exam</th><th>Faculty</th><th>Classroom</th><th>Date</th><th>Score</th><th>%</th><th>Result</th></tr></thead>
+    <thead><tr><th>Student</th><th>Exam</th><th>Faculty</th><th>Classroom</th><th class="date-col">Date</th><th>Score</th><th>%</th><th>Result</th></tr></thead>
     <tbody>
       {% for r in data %}
       {% set pct = ((r.score/r.total)*100)|round(1) if r.total else 0 %}
