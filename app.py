@@ -3793,11 +3793,13 @@ def faculty_export_csv():
 @app.route("/faculty/results/export/pdf")
 def faculty_export_pdf():
     from flask import Response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
+    from reportlab.platypus import Paragraph, Table
     from reportlab.lib import colors
-    from reportlab.lib.units import cm
+    from pdf_utils import (
+        create_pdf_document, get_pdf_styles, get_column_widths,
+        get_table_style, format_datetime, create_header_table,
+        create_summary_table, apply_column_alignment
+    )
     import os
     g = require_role("faculty")
     if g: return g
@@ -4173,11 +4175,13 @@ def student_analytics_export_csv():
 @app.route("/faculty/student_analytics/export/pdf")
 def student_analytics_export_pdf():
     from flask import Response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
+    from reportlab.platypus import Paragraph, Table
     from reportlab.lib import colors
-    from reportlab.lib.units import cm
+    from pdf_utils import (
+        create_pdf_document, get_pdf_styles, get_column_widths,
+        get_table_style, format_datetime, create_header_table,
+        create_summary_table, apply_column_alignment
+    )
     import os
     import traceback
     
@@ -5519,11 +5523,13 @@ def faculty_analytics_export():
 @app.route("/faculty/analytics/export/pdf")
 def faculty_analytics_export_pdf():
     from flask import Response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
+    from reportlab.platypus import Paragraph, Table
     from reportlab.lib import colors
-    from reportlab.lib.units import cm
+    from pdf_utils import (
+        create_pdf_document, get_pdf_styles, get_column_widths,
+        get_table_style, format_datetime, create_header_table,
+        create_summary_table, apply_column_alignment
+    )
     import os
     g = require_role("faculty")
     if g: return g
@@ -5730,11 +5736,13 @@ def student_results_export():
 @app.route("/student/results/export/pdf")
 def student_export_pdf():
     from flask import Response
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
+    from reportlab.platypus import Paragraph, Table
     from reportlab.lib import colors
-    from reportlab.lib.units import cm
+    from pdf_utils import (
+        create_pdf_document, get_pdf_styles, get_column_widths,
+        get_table_style, format_datetime, create_header_table,
+        create_summary_table, apply_column_alignment
+    )
     import os
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     try:

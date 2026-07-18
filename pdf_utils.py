@@ -3,11 +3,12 @@ Shared PDF utilities for EduSphere reports.
 Provides consistent layout, styling, and configuration across all PDF exports.
 """
 
-from reportlab.lib.pagesizes import landscape, A4, letter
+from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Image, PageBreak
+from reportlab.lib.enums import TA_CENTER
 from datetime import datetime
 import os
 
@@ -15,18 +16,14 @@ import os
 def get_pdf_config():
     """
     Returns shared PDF configuration.
-    Uses landscape Letter for maximum width (better than A4 landscape).
+    Uses A4 portrait with consistent margins.
     """
-    # Landscape Letter provides more width than landscape A4
-    # Letter landscape: 11.69 x 8.27 inches
-    # A4 landscape: 11.69 x 8.27 inches (similar, but Letter is slightly wider)
-    
     return {
-        'pagesize': landscape(letter),
-        'left_margin': 20,
-        'right_margin': 20,
-        'top_margin': 30,
-        'bottom_margin': 25,
+        'pagesize': A4,
+        'left_margin': 18,
+        'right_margin': 18,
+        'top_margin': 20,
+        'bottom_margin': 20,
     }
 
 
@@ -41,9 +38,25 @@ def create_pdf_document(response):
         leftMargin=config['left_margin'],
         rightMargin=config['right_margin'],
         topMargin=config['top_margin'],
-        bottomMargin=config['bottom_margin']
+        bottomMargin=config['bottom_margin'],
+        onFirstPage=add_page_number,
+        onLaterPages=add_page_number
     )
     return doc
+
+
+def add_page_number(canvas, doc):
+    """Add page number to footer."""
+    canvas.saveState()
+    canvas.setFont('Helvetica', 8)
+    canvas.setFillColor(colors.grey)
+    page_num = canvas.getPageNumber()
+    canvas.drawCentredString(
+        A4[0] / 2,
+        10,
+        f"Page {page_num}"
+    )
+    canvas.restoreState()
 
 
 def get_pdf_styles():
@@ -178,56 +191,65 @@ def get_table_style(column_count):
     return TableStyle(style_rules)
 
 
-def get_column_widths(report_type):
+def get_column_widths(report_type, doc_width=None):
     """
     Returns column width configuration for each report type.
     Widths are percentages of available page width.
     
-    Returns list of column widths in cm units.
-    """
-    # Landscape Letter width is approximately 28 cm (11 inches)
-    # With 20pt margins on each side, available width is ~26 cm
-    # We use cm units for consistency
+    Args:
+        report_type: Type of report ('users', 'activity', 'exam', etc.)
+        doc_width: Available document width in points (optional)
     
+    Returns list of column widths in points units.
+    """
+    # A4 width is approximately 595 points
+    # With 18pt margins on each side, available width is ~559 points
+    if doc_width is None:
+        doc_width = 559  # Default A4 width with 18pt margins
+    
+    # Define column percentages for each report type
     if report_type == 'users':
         # Name: 18%, Email: 28%, Role: 10%, Status: 10%, Created At: 18%, Actions: 16%
-        return [4.7*cm, 7.3*cm, 2.6*cm, 2.6*cm, 4.7*cm, 4.1*cm]
+        percentages = [0.18, 0.28, 0.10, 0.10, 0.18, 0.16]
     
     elif report_type == 'activity':
         # User: 16%, Role: 10%, Email: 25%, Action: 29%, Timestamp: 20%
-        return [4.2*cm, 2.6*cm, 6.5*cm, 7.5*cm, 5.2*cm]
+        percentages = [0.16, 0.10, 0.25, 0.29, 0.20]
     
     elif report_type == 'exam':
         # Student: 18%, Exam: 15%, Subject: 12%, Date: 12%, Faculty: 15%, Score: 8%, Total: 8%, %: 6%, Result: 6%
-        return [4.7*cm, 3.9*cm, 3.1*cm, 3.1*cm, 3.9*cm, 2.1*cm, 2.1*cm, 1.6*cm, 1.6*cm]
+        percentages = [0.18, 0.15, 0.12, 0.12, 0.15, 0.08, 0.08, 0.06, 0.06]
     
     elif report_type == 'faculty':
         # Student: 18%, Exam: 15%, Subject: 12%, Date: 12%, Score: 8%, Total: 8%, %: 6%, Result: 6%, Actions: 15%
-        return [4.7*cm, 3.9*cm, 3.1*cm, 3.1*cm, 2.1*cm, 2.1*cm, 1.6*cm, 1.6*cm, 3.9*cm]
+        percentages = [0.18, 0.15, 0.12, 0.12, 0.08, 0.08, 0.06, 0.06, 0.15]
     
     elif report_type == 'student':
         # Exam: 20%, Subject: 15%, Date: 12%, Score: 8%, Total: 8%, %: 6%, Result: 6%, Actions: 25%
-        return [5.2*cm, 3.9*cm, 3.1*cm, 2.1*cm, 2.1*cm, 1.6*cm, 1.6*cm, 6.5*cm]
+        percentages = [0.20, 0.15, 0.12, 0.08, 0.08, 0.06, 0.06, 0.25]
     
     elif report_type == 'analytics':
         # Exam: 18%, Classroom: 15%, Subject: 12%, Date: 12%, Attempts: 8%, Avg Score: 8%, Avg %: 8%, Max: 6%, Min: 6%, Total: 7%
-        return [4.7*cm, 3.9*cm, 3.1*cm, 3.1*cm, 2.1*cm, 2.1*cm, 2.1*cm, 1.6*cm, 1.6*cm, 1.8*cm]
+        percentages = [0.18, 0.15, 0.12, 0.12, 0.08, 0.08, 0.08, 0.06, 0.06, 0.07]
     
     elif report_type == 'classroom':
         # Name: 20%, Registration: 15%, Email: 25%, Joined: 15%, Actions: 25%
-        return [5.2*cm, 3.9*cm, 6.5*cm, 3.9*cm, 6.5*cm]
+        percentages = [0.20, 0.15, 0.25, 0.15, 0.25]
     
     elif report_type == 'integrity':
         # Student: 18%, Exam: 15%, Subject: 12%, Date: 12%, Flagged: 12%, Actions: 31%
-        return [4.7*cm, 3.9*cm, 3.1*cm, 3.1*cm, 3.1*cm, 8.1*cm]
+        percentages = [0.18, 0.15, 0.12, 0.12, 0.12, 0.31]
     
     elif report_type == 'question_bank':
         # Question: 35%, Subject: 15%, Type: 10%, Marks: 8%, Difficulty: 10%, Actions: 22%
-        return [9.1*cm, 3.9*cm, 2.6*cm, 2.1*cm, 2.6*cm, 5.7*cm]
+        percentages = [0.35, 0.15, 0.10, 0.08, 0.10, 0.22]
     
     else:
         # Default fallback
-        return [3.0*cm] * 5
+        percentages = [0.20] * 5
+    
+    # Calculate actual widths in points
+    return [doc_width * pct for pct in percentages]
 
 
 def create_header_table(title, logo_path=None):
