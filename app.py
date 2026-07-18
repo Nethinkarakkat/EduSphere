@@ -61,7 +61,7 @@ app.jinja_env.filters['format_datetime'] = format_datetime
 
 # Global avatar helper function
 def get_avatar(user):
-    """Get avatar URL for a user, or None if no avatar exists."""
+    """Get avatar URL for a user, or default avatar if no avatar exists."""
     if not user:
         return None
     
@@ -88,7 +88,17 @@ def get_avatar(user):
         # Convert /static/uploads/ to relative path if needed
         if isinstance(profile_pic, str) and profile_pic.startswith("/static/"):
             profile_pic = profile_pic.replace("/static/", "", 1)
-        return url_for('static', filename=profile_pic)
+        # Check if file exists
+        filepath = os.path.join('static', profile_pic)
+        if os.path.exists(filepath):
+            return url_for('static', filename=profile_pic)
+    
+    # Return default avatar using UI Avatars service (initials-based)
+    name = user.get("name", "User")
+    if isinstance(name, str) and name:
+        # Generate initials-based avatar
+        initials = "".join([n[0].upper() for n in name.split() if n][:2])
+        return f"https://ui-avatars.com/api/?name={name}&background=4f46e5&color=fff&size=128&bold=true"
     
     return None
 
@@ -1735,7 +1745,7 @@ def admin_activity_export_csv():
 @app.route("/admin/activity/export/pdf")
 def admin_activity_export_pdf():
     from flask import Response
-    from reportlab.platypus import Paragraph
+    from reportlab.platypus import Paragraph, Table
     from pdf_utils import (
         create_pdf_document, get_pdf_styles, get_column_widths,
         get_table_style, format_datetime, create_header_table,
@@ -1834,7 +1844,7 @@ def admin_activity_export_pdf():
         )
     except Exception as e:
         import traceback
-        app.logger.error(f"PDF generation error (activity log): {e}\n{traceback.format_exc()}")
+        app.logger.exception("PDF generation error (activity log)")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/admin/activity")
 
@@ -1911,13 +1921,14 @@ def admin_users_export_csv():
 @app.route("/admin/users/export/pdf")
 def admin_users_export_pdf():
     from flask import Response
-    from reportlab.platypus import Paragraph
+    from reportlab.platypus import Paragraph, Table
     from pdf_utils import (
         create_pdf_document, get_pdf_styles, get_column_widths,
         get_table_style, format_datetime, create_header_table,
         create_summary_table, apply_column_alignment
     )
     import os
+    import traceback
     g = require_role("admin")
     if g: return g
     try:
@@ -2009,7 +2020,7 @@ def admin_users_export_pdf():
             headers={"Content-Disposition": 'attachment; filename="users.pdf"'}
         )
     except Exception as e:
-        app.logger.error(f"PDF generation error: {e}")
+        app.logger.exception("PDF export failed")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/admin/users")
 
@@ -2305,6 +2316,7 @@ def export_pdf():
     from reportlab.lib import colors
     from reportlab.lib.units import cm
     import os
+    import traceback
     g = require_role("admin")
     if g: return g
     try:
@@ -2344,7 +2356,7 @@ def export_pdf():
         
         # Create PDF with shared configuration
         from flask import Response
-        from reportlab.platypus import Paragraph
+        from reportlab.platypus import Paragraph, Table
         from reportlab.lib import colors
         from pdf_utils import (
             create_pdf_document, get_pdf_styles, get_column_widths,
@@ -2445,7 +2457,7 @@ def export_pdf():
             headers={"Content-Disposition": 'attachment; filename="edusphere_report.pdf"'}
         )
     except Exception as e:
-        app.logger.error(f"PDF generation error: {e}")
+        app.logger.exception("PDF generation error (reports)")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/reports")
 
@@ -3854,7 +3866,7 @@ def faculty_export_pdf():
         
         # Create PDF with shared configuration
         from flask import Response
-        from reportlab.platypus import Paragraph
+        from reportlab.platypus import Paragraph, Table
         from pdf_utils import (
             create_pdf_document, get_pdf_styles, get_column_widths,
             get_table_style, format_datetime, create_header_table,
@@ -3945,7 +3957,7 @@ def faculty_export_pdf():
         )
     except Exception as e:
         import traceback
-        app.logger.error(f"PDF generation error (faculty results): {e}\n{traceback.format_exc()}")
+        app.logger.exception("PDF generation error (faculty results)")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/faculty/results")
 
@@ -4214,7 +4226,7 @@ def student_analytics_export_pdf():
         
         # Create PDF with shared configuration
         from flask import Response
-        from reportlab.platypus import Paragraph
+        from reportlab.platypus import Paragraph, Table
         from pdf_utils import (
             create_pdf_document, get_pdf_styles, get_column_widths,
             get_table_style, format_datetime, create_header_table,
@@ -4299,9 +4311,7 @@ def student_analytics_export_pdf():
         )
     except Exception as e:
         import traceback
-        app.logger.error(
-            f"Student analytics PDF error: {e}\n{traceback.format_exc()}"
-        )
+        app.logger.exception("Student analytics PDF error")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/faculty/student_analytics")
 
@@ -5546,7 +5556,7 @@ def faculty_analytics_export_pdf():
 
         # Create PDF with shared configuration
         from flask import Response
-        from reportlab.platypus import Paragraph
+        from reportlab.platypus import Paragraph, Table
         from pdf_utils import (
             create_pdf_document, get_pdf_styles, get_column_widths,
             get_table_style, format_datetime, create_header_table,
@@ -5632,7 +5642,7 @@ def faculty_analytics_export_pdf():
                         headers={"Content-Disposition": 'attachment; filename="faculty_analytics.pdf"'})
     except Exception as e:
         import traceback
-        app.logger.error(f"Analytics PDF error: {e}\n{traceback.format_exc()}")
+        app.logger.exception("Analytics PDF error")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/faculty/analytics")
 
@@ -5756,7 +5766,7 @@ def student_export_pdf():
         
         # Create PDF with shared configuration
         from flask import Response
-        from reportlab.platypus import Paragraph
+        from reportlab.platypus import Paragraph, Table
         from pdf_utils import (
             create_pdf_document, get_pdf_styles, get_column_widths,
             get_table_style, format_datetime, create_header_table,
@@ -5837,7 +5847,7 @@ def student_export_pdf():
         )
     except Exception as e:
         import traceback
-        app.logger.error(f"PDF generation error (student results): {e}\n{traceback.format_exc()}")
+        app.logger.exception("PDF generation error (student results)")
         flash("Unable to generate PDF. Please try again.", "danger")
         return redirect("/student/results")
 
