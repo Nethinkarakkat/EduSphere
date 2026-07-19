@@ -4616,7 +4616,8 @@ def select_questions(exam_id):
         for qid in request.form.getlist("questions"):
             q = conn.execute("SELECT * FROM question_bank WHERE id=%s", (qid,)).fetchone()
             if not conn.execute("SELECT id FROM questions WHERE exam_id=%s AND question=%s", (exam_id,q["question"])).fetchone():
-                conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty,marks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)", (exam_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"] if q["difficulty"] else "medium", 1))
+                marks = q.get("marks", 1) if q.get("marks") and q.get("marks") > 0 else 1
+                conn.execute("INSERT INTO questions(exam_id,question,option1,option2,option3,option4,correct_answer,difficulty,marks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)", (exam_id,q["question"],q["option1"],q["option2"],q["option3"],q["option4"],q["correct_answer"],q["difficulty"] if q["difficulty"] else "medium", marks))
                 added += 1
         conn.commit()
         # Recalculate total_marks
@@ -4790,9 +4791,10 @@ def add_bank_question():
             flash("Please select the correct answer.", "danger")
             return render_template("faculty/add_bank_question.html")
         
-        conn.execute("INSERT INTO question_bank(question,option1,option2,option3,option4,correct_answer,category,difficulty,faculty_id) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s)", (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
+        marks = request.form.get("marks", "1").strip() or "1"
+        conn.execute("INSERT INTO question_bank(question,option1,option2,option3,option4,correct_answer,category,difficulty,faculty_id,marks) VALUES(%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)", (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
                       request.form["o4"],correct_answer,request.form.get("category",""),
-                      request.form.get("difficulty","medium"),session["user_id"]))
+                      request.form.get("difficulty","medium"),session["user_id"],marks))
         conn.commit()
         conn.close()
         flash("Question added.", "success"); return redirect("/question_bank")
@@ -4820,9 +4822,10 @@ def edit_bank_question(id):
             conn.close()
             return render_template("faculty/edit_bank_question.html", question=question)
         
-        conn.execute("UPDATE question_bank SET question=%s,option1=%s,option2=%s,option3=%s,option4=%s,correct_answer=%s,category=%s,difficulty=%s WHERE id=%s", (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
+        marks = request.form.get("marks", "1").strip() or "1"
+        conn.execute("UPDATE question_bank SET question=%s,option1=%s,option2=%s,option3=%s,option4=%s,correct_answer=%s,category=%s,difficulty=%s,marks=%s WHERE id=%s", (request.form["question"],request.form["o1"],request.form["o2"],request.form["o3"],
                       request.form["o4"],correct_answer,request.form.get("category",""),
-                      request.form.get("difficulty","medium"),id))
+                      request.form.get("difficulty","medium"),marks,id))
         conn.commit()
         conn.close()
         flash("Question updated.", "success"); return redirect("/question_bank")
