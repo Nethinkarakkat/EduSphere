@@ -46,15 +46,16 @@ def create_pdf_document(response):
 
 
 def add_page_number(canvas, doc):
-    """Add page number to footer."""
+    """Add page number to footer with total pages."""
     canvas.saveState()
     canvas.setFont('Helvetica', 8)
     canvas.setFillColor(colors.grey)
     page_num = canvas.getPageNumber()
+    total_pages = getattr(doc, 'numPages', 1)
     canvas.drawCentredString(
         A4[0] / 2,
         10,
-        f"Page {page_num}"
+        f"Page {page_num} of {total_pages}"
     )
     canvas.restoreState()
 
@@ -126,7 +127,7 @@ def get_pdf_styles():
 def format_datetime(dt):
     """
     Formats datetime for PDF display on two lines.
-    Returns: "YYYY-MM-DD<br/>HH:MM:SS" or "—" if None
+    Returns: "DD Mon YYYY<br/>H:MM AM/PM" or "—" if None
     
     Handles both datetime objects and string representations.
     """
@@ -149,10 +150,10 @@ def format_datetime(dt):
     
     # Now format the datetime object
     if hasattr(dt, 'strftime'):
-        date_str = dt.strftime('%Y-%m-%d')
+        date_str = dt.strftime('%d %b %Y')  # 18 Jul 2026
         # Check if it has time component
         if hasattr(dt, 'hour') and (dt.hour != 0 or dt.minute != 0 or dt.second != 0):
-            time_str = dt.strftime('%H:%M:%S')
+            time_str = dt.strftime('%I:%M %p')  # 2:52 PM
             return f"{date_str}<br/>{time_str}"
         else:
             return date_str
@@ -213,8 +214,8 @@ def get_column_widths(report_type, doc_width=None):
         percentages = [0.18, 0.28, 0.10, 0.10, 0.18, 0.16]
     
     elif report_type == 'activity':
-        # User: 16%, Role: 10%, Email: 25%, Action: 29%, Timestamp: 20%
-        percentages = [0.16, 0.10, 0.25, 0.29, 0.20]
+        # User: 16%, Role: 10%, Email: 32%, Action: 22%, Timestamp: 20%
+        percentages = [0.16, 0.10, 0.32, 0.22, 0.20]
     
     elif report_type == 'exam':
         # Student: 18%, Exam: 15%, Subject: 12%, Date: 12%, Faculty: 15%, Score: 8%, Total: 8%, %: 6%, Result: 6%
@@ -254,7 +255,7 @@ def get_column_widths(report_type, doc_width=None):
 
 def create_header_table(title, logo_path=None):
     """
-    Creates a standardized header table with logo and title.
+    Creates a standardized header table with centered logo, branding, and title.
     """
     styles = get_pdf_styles()
     
@@ -275,13 +276,16 @@ def create_header_table(title, logo_path=None):
     else:
         logo_cell = Paragraph('EduSphere', styles['brand'])
     
-    hdr_table = Table(
-        [["", Paragraph(title, styles['title']), logo_cell]],
-        colWidths=[3.5*cm, 11*cm, 3.5*cm]
-    )
+    # Create a cohesive header block with logo/branding centered above title
+    header_elements = [
+        [logo_cell],
+        [Paragraph(title, styles['title'])]
+    ]
+    
+    hdr_table = Table(header_elements, colWidths=[18*cm])
     hdr_table.setStyle(TableStyle([
+        ('ALIGN', (0, 0), (0, -1), 'CENTER'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('ALIGN', (2, 0), (2, 0), 'RIGHT'),
         ('LEFTPADDING', (0, 0), (-1, -1), 0),
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
@@ -293,7 +297,7 @@ def create_header_table(title, logo_path=None):
 
 def create_summary_table(summary_data):
     """
-    Creates a standardized summary table.
+    Creates a standardized summary table with bordered box styling.
     summary_data should be a list of [label, value] pairs.
     """
     styles = get_pdf_styles()
@@ -312,6 +316,12 @@ def create_summary_table(summary_data):
         ('TEXTCOLOR', (2, 0), (2, -1), colors.HexColor('#333333')),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('LEFTPADDING', (0, 0), (-1, -1), 0),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#F8FAFC')),
+        ('BOX', (0, 0), (-1, -1), 1, colors.HexColor('#D1D5DB')),
+        ('INNERGRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E2E8F0')),
     ]))
     
     return summary_table

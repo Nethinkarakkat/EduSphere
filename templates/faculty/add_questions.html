@@ -34,33 +34,35 @@
             <input type="text" name="question" id="qInput" class="form-control"
                    placeholder="Enter question text" required>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Option A <span style="color:var(--danger)">*</span></label>
+          <div class="form-group">
+            <label class="form-label">Option A <span style="color:var(--danger)">*</span></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="radio" name="correct_option" value="o1" required style="width:20px;height:20px;">
               <input type="text" name="o1" class="form-control" placeholder="Option A" required>
             </div>
-            <div class="form-group">
-              <label class="form-label">Option B <span style="color:var(--danger)">*</span></label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Option B <span style="color:var(--danger)">*</span></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="radio" name="correct_option" value="o2" required style="width:20px;height:20px;">
               <input type="text" name="o2" class="form-control" placeholder="Option B" required>
             </div>
           </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Option C <span style="color:var(--danger)">*</span></label>
+          <div class="form-group">
+            <label class="form-label">Option C <span style="color:var(--danger)">*</span></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="radio" name="correct_option" value="o3" required style="width:20px;height:20px;">
               <input type="text" name="o3" class="form-control" placeholder="Option C" required>
             </div>
-            <div class="form-group">
-              <label class="form-label">Option D <span style="color:var(--danger)">*</span></label>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Option D <span style="color:var(--danger)">*</span></label>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <input type="radio" name="correct_option" value="o4" required style="width:20px;height:20px;">
               <input type="text" name="o4" class="form-control" placeholder="Option D" required>
             </div>
           </div>
           <div class="form-row">
-            <div class="form-group">
-              <label class="form-label">Correct Answer <span style="color:var(--danger)">*</span></label>
-              <input type="text" name="answer" class="form-control"
-                     placeholder="Must match one option exactly" required>
-              <div class="form-hint">Type the option text exactly as written above.</div>
-            </div>
             <div class="form-group">
               <label class="form-label">Difficulty</label>
               <select name="difficulty" class="form-control">
@@ -69,8 +71,6 @@
                 <option value="hard">Hard</option>
               </select>
             </div>
-          </div>
-          <div class="form-row">
             <div class="form-group">
               <label class="form-label">Marks</label>
               <input type="number" name="marks" class="form-control" value="1" min="1" required>

@@ -4562,7 +4562,23 @@ def add_questions(exam_id):
         o2   = request.form.get("o2","").strip()
         o3   = request.form.get("o3","").strip()
         o4   = request.form.get("o4","").strip()
-        ans  = request.form.get("answer","").strip()
+        # Get the selected correct option and use its value as the correct answer
+        correct_option = request.form.get("correct_option")
+        if correct_option == "o1":
+            ans = o1
+        elif correct_option == "o2":
+            ans = o2
+        elif correct_option == "o3":
+            ans = o3
+        elif correct_option == "o4":
+            ans = o4
+        else:
+            flash("Please select the correct answer.", "danger")
+            q_count = conn.execute("SELECT COUNT(*) as count FROM questions WHERE exam_id=%s", (exam_id,)).fetchone()['count']
+            questions_list = conn.execute("SELECT * FROM questions WHERE exam_id=%s", (exam_id,)).fetchall()
+            conn.close()
+            return render_template("faculty/add_questions.html", exam_id=exam_id, exam=exam,
+                                   q_count=q_count, questions_list=questions_list)
         diff = request.form.get("difficulty","medium").strip() or "medium"
         marks = request.form.get("marks", "1").strip() or "1"
         if not all([q, o1, o2, o3, o4, ans]):

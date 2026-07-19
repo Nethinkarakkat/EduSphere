@@ -47,6 +47,46 @@
   --input-radius:         10px;
 }
 
+/* Custom radio buttons for question forms */
+input[type="radio"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--primary);
+  border-radius: 50%;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  position: relative;
+}
+
+input[type="radio"]:checked {
+  background-color: var(--primary);
+  border-color: var(--primary);
+}
+
+input[type="radio"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background-color: white;
+  border-radius: 50%;
+}
+
+input[type="radio"]:hover {
+  border-color: var(--primary-dark);
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+}
+
+input[type="radio"]:focus {
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.2);
+}
+
 [data-theme="dark"] {
   --page-bg:         #020617;
   --card-bg:         #1E293B;
@@ -104,9 +144,9 @@ body {
   transition: transform 0.3s ease;
 }
 .sb-brand {
-  height: 64px;
-  min-height: 64px;
-  max-height: 64px;
+  height: 72px;
+  min-height: 72px;
+  max-height: 72px;
   padding: 12px 20px;
   border-bottom: 1px solid rgba(255,255,255,.08);
   display: flex;
@@ -118,13 +158,13 @@ body {
   gap: 12px;
 }
 .sb-logo {
-  width: 52px; height: 52px; border-radius: 9px;
+  width: 60px; height: 60px; border-radius: 9px;
   background: var(--primary);
   display: flex; align-items: center; justify-content: center;
-  font-size: 17px; flex-shrink: 0;
+  font-size: 19px; flex-shrink: 0;
 }
 .sb-logo-img {
-  width: 52px; height: 52px; object-fit: contain;
+  width: 60px; height: 60px; object-fit: contain;
   flex-shrink: 0;
 }
 .sb-brand-text-container {
@@ -132,8 +172,8 @@ body {
   flex-direction: column;
   justify-content: center;
 }
-.sb-brand-name { color: var(--white); font-weight: 700; font-size: 20px; line-height: 1.1; margin: 0; letter-spacing: -0.3px; }
-.sb-brand-sub  { color: rgba(255,255,255,.9); font-size: 11px; font-weight: 500; margin-top: 1px; line-height: 1.1; opacity: 0.75; white-space: nowrap; letter-spacing: -0.2px; }
+.sb-brand-name { color: var(--white); font-weight: 700; font-size: 22px; line-height: 1.1; margin: 0; letter-spacing: -0.3px; }
+.sb-brand-sub  { color: rgba(255,255,255,.9); font-size: 12px; font-weight: 500; margin-top: 2px; line-height: 1.1; opacity: 0.75; white-space: nowrap; letter-spacing: -0.2px; }
 
 .sb-nav { padding: 14px 10px; flex: 1; }
 .sb-section {
@@ -1579,10 +1619,10 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 @media (min-width: 768px) and (max-width: 991px) {
   /* Sidebar: Icon-only mode */
   .sidebar { width: 70px; }
-  .sb-brand { padding: 12px 12px; height: 56px; min-height: 56px; max-height: 56px; }
+  .sb-brand { padding: 12px 12px; height: 60px; min-height: 60px; max-height: 60px; }
   .sb-brand-name, .sb-brand-sub { display: none; }
-  .sb-logo { width: 44px; height: 44px; }
-  .sb-logo-img { width: 44px; height: 44px; }
+  .sb-logo { width: 48px; height: 48px; }
+  .sb-logo-img { width: 48px; height: 48px; }
   .sb-link { padding: 12px; justify-content: center; }
   .sb-link span { display: none; }
   .sb-link i { margin: 0; }
@@ -1649,6 +1689,17 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .form-label { font-size: 13px; margin-bottom: 6px; }
   .form-section { margin-bottom: 16px; }
   .form-section-title { font-size: 14px; margin-bottom: 10px; }
+  
+  /* Radio buttons: Maintain alignment on mobile */
+  input[type="radio"] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  input[type="radio"]:checked::after {
+    width: 7px;
+    height: 7px;
+  }
   
   /* Typography: Slightly reduce headings */
   h1 { font-size: 20px; }
@@ -1722,10 +1773,10 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .auth-logo-text { font-size: 28px; font-weight: 600; }
   .auth-logo-subtext { font-size: 15px; font-weight: 500; }
   .auth-card .form-group { margin-bottom: 10px; }
-  .sb-logo-img { width: 48px; height: 48px; }
-  .sb-logo { width: 48px; height: 48px; }
-  .sb-brand-name { font-size: 20px; }
-  .sb-brand-sub { font-size: 11px; white-space: nowrap; }
+  .sb-logo-img { width: 52px; height: 52px; }
+  .sb-logo { width: 52px; height: 52px; }
+  .sb-brand-name { font-size: 22px; }
+  .sb-brand-sub { font-size: 12px; white-space: nowrap; }
 }
 
 /* Mobile (≤767px) */
