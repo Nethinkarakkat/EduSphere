@@ -89,14 +89,19 @@ def get_avatar(user):
         if isinstance(profile_pic, str) and profile_pic.startswith("http"):
             return profile_pic
         
-        # If it's an old static/uploads path, fall back to default avatar
-        # (these files don't exist on Render due to ephemeral filesystem)
+        # If it's a local static path, check if file exists (for development)
         if isinstance(profile_pic, str) and profile_pic.startswith("/static/"):
-            # Fall back to default avatar for old uploads
+            # In development, check if file exists locally
+            filepath = os.path.join(os.path.dirname(__file__), profile_pic[1:])  # Remove leading /
+            if os.path.exists(filepath):
+                return profile_pic
+            # In production (Render), local files won't exist, so fall through to default
             pass
-        # Check if local file exists (for development)
-        elif isinstance(profile_pic, str):
-            filepath = os.path.join('static', profile_pic)
+        
+        # If it's a relative path (without /static/), try to construct full path
+        if isinstance(profile_pic, str) and not profile_pic.startswith("/"):
+            # Try as relative path from static
+            filepath = os.path.join(os.path.dirname(__file__), 'static', profile_pic)
             if os.path.exists(filepath):
                 return url_for('static', filename=profile_pic)
     
@@ -3014,7 +3019,8 @@ def admin_profile():
         user = dict(user)
         # Sync session with database profile picture
         if "profile_picture" in user and user["profile_picture"]:
-            session["profile_pic"] = user["profile_picture"].replace("/static/", "", 1) if user["profile_picture"].startswith("/static/") else user["profile_picture"]
+            # Store the full URL/path in session (don't strip /static/ for local files)
+            session["profile_pic"] = user["profile_picture"]
         else:
             session["profile_pic"] = ""
     return render_template("admin/admin_profile.html", user=user)
@@ -3312,7 +3318,8 @@ def student_profile():
         user = dict(user)
         # Sync session with database profile picture
         if "profile_picture" in user and user["profile_picture"]:
-            session["profile_pic"] = user["profile_picture"].replace("/static/", "", 1) if user["profile_picture"].startswith("/static/") else user["profile_picture"]
+            # Store the full URL/path in session (don't strip /static/ for local files)
+            session["profile_pic"] = user["profile_picture"]
         else:
             session["profile_pic"] = ""
     return render_template("student/student_profile.html", user=user)
@@ -6046,7 +6053,8 @@ def faculty_profile():
         user = dict(user)
         # Sync session with database profile picture
         if "profile_picture" in user and user["profile_picture"]:
-            session["profile_pic"] = user["profile_picture"].replace("/static/", "", 1) if user["profile_picture"].startswith("/static/") else user["profile_picture"]
+            # Store the full URL/path in session (don't strip /static/ for local files)
+            session["profile_pic"] = user["profile_picture"]
         else:
             session["profile_pic"] = ""
     conn.close()
