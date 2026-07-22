@@ -85,13 +85,20 @@ def get_avatar(user):
                     profile_pic = None
     
     if profile_pic:
-        # Convert /static/uploads/ to relative path if needed
+        # If it's a Supabase URL (starts with http), return it directly
+        if isinstance(profile_pic, str) and profile_pic.startswith("http"):
+            return profile_pic
+        
+        # If it's an old static/uploads path, fall back to default avatar
+        # (these files don't exist on Render due to ephemeral filesystem)
         if isinstance(profile_pic, str) and profile_pic.startswith("/static/"):
-            profile_pic = profile_pic.replace("/static/", "", 1)
-        # Check if file exists
-        filepath = os.path.join('static', profile_pic)
-        if os.path.exists(filepath):
-            return url_for('static', filename=profile_pic)
+            # Fall back to default avatar for old uploads
+            pass
+        # Check if local file exists (for development)
+        elif isinstance(profile_pic, str):
+            filepath = os.path.join('static', profile_pic)
+            if os.path.exists(filepath):
+                return url_for('static', filename=profile_pic)
     
     # Return default avatar using UI Avatars service (initials-based)
     name = user.get("name", "User")
@@ -2201,7 +2208,7 @@ def reports():
     if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
     if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
-    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
+    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.id, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
 
     # Faculty performance
@@ -2277,7 +2284,7 @@ def export_csv():
     if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
     if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
-    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.score, submissions.submitted_at, exams.pass_percentage ORDER BY submissions.submitted_at DESC"
+    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.id, submissions.score, submissions.submitted_at, exams.pass_percentage ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
     conn.close()
     
@@ -2344,7 +2351,7 @@ def export_pdf():
         if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
         if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
         if filters: query += " WHERE " + " AND ".join(filters)
-        query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
+        query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.id, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
         data = conn.execute(query, params).fetchall()
         conn.close()
         
@@ -3021,13 +3028,17 @@ def admin_remove_picture():
     
     if user and user["profile_picture"]:
         db_path = user["profile_picture"]
+        
+        # Delete from Supabase if it's a Supabase URL
+        from supabase_storage import delete_profile_picture
+        delete_profile_picture(db_path)
+        
+        # Also delete local file if it exists (for old uploads)
         if db_path.startswith("/static/"):
             rel_path = db_path.replace("/static/", "", 1)
-        else:
-            rel_path = db_path
-        filepath = os.path.join('static', rel_path)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+            filepath = os.path.join('static', rel_path)
+            if os.path.exists(filepath):
+                os.remove(filepath)
         
         conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"],))
         conn.commit()
@@ -3068,26 +3079,44 @@ def admin_upload_picture():
         return jsonify({"success": False, "error": "File size exceeds 2MB limit."}), 400
     
     try:
-        # Save cropped image
-        upload_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+        # Upload to Supabase Storage
+        from supabase_storage import upload_profile_picture, delete_profile_picture
         
-        # Generate unique filename
-        timestamp = datetime.now().strftime('%Y%m%d')
-        filename = f"profile_admin_{session['user_id']}_{timestamp}.jpg"
-        filepath = os.path.join(upload_folder, filename)
-        file.save(filepath)
+        # Delete old profile picture if exists
+        conn = get_db()
+        old_pic = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
+        if old_pic and old_pic["profile_picture"]:
+            delete_profile_picture(old_pic["profile_picture"])
+        
+        # Upload new picture
+        public_url = upload_profile_picture(file, session["user_id"])
+        
+        if not public_url:
+            # Fallback to local storage if Supabase fails
+            upload_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+            if not os.path.exists(upload_folder):
+                os.makedirs(upload_folder)
+            
+            timestamp = datetime.now().strftime('%Y%m%d')
+            filename = f"profile_admin_{session['user_id']}_{timestamp}.jpg"
+            filepath = os.path.join(upload_folder, filename)
+            file.save(filepath)
+            public_url = f"/static/uploads/{filename}"
         
         # Update database
-        conn = get_db()
-        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (f"/static/uploads/{filename}", session["user_id"]))
+        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (public_url, session["user_id"]))
         conn.commit()
         conn.close()
-        session["profile_pic"] = f"uploads/{filename}"
+        
+        # Update session with the public URL
+        if public_url.startswith("/static/"):
+            session["profile_pic"] = public_url.replace("/static/", "", 1)
+        else:
+            session["profile_pic"] = public_url
+        
         log_activity(session["user_id"], "Updated profile picture")
         
-        return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": f"/static/uploads/{filename}"})
+        return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": public_url})
     except Exception as e:
         app.logger.exception("Admin profile upload error")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -3343,25 +3372,45 @@ def student_upload_picture():
     if not file.filename.lower().endswith(('.jpg', '.jpeg', '.png')):
         return jsonify({"success": False, "error": "Only JPG and PNG files are allowed"}), 400
     
-    # Generate unique filename
-    filename = f"student_{session['user_id']}_{int(datetime.now().timestamp())}.jpg"
-    filepath = os.path.join("static", "uploads", filename)
-    
-    # Ensure directory exists
-    os.makedirs(os.path.dirname(filepath), exist_ok=True)
-    
-    # Save file
-    file.save(filepath)
-    
-    # Update database (use profile_picture column for consistency)
-    conn = get_db()
-    conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (f"/static/uploads/{filename}", session["user_id"]))
-    conn.commit()
-    conn.close()
-    session["profile_pic"] = f"uploads/{filename}"
-    log_activity(session["user_id"], "Updated profile picture")
-    
-    return jsonify({"success": True, "url": f"/static/uploads/{filename}"})
+    try:
+        # Upload to Supabase Storage
+        from supabase_storage import upload_profile_picture, delete_profile_picture
+        
+        # Delete old profile picture if exists
+        conn = get_db()
+        old_pic = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
+        if old_pic and old_pic["profile_picture"]:
+            delete_profile_picture(old_pic["profile_picture"])
+        
+        # Upload new picture
+        public_url = upload_profile_picture(file, session["user_id"])
+        
+        if not public_url:
+            # Fallback to local storage if Supabase fails
+            filename = f"student_{session['user_id']}_{int(datetime.now().timestamp())}.jpg"
+            filepath = os.path.join("static", "uploads", filename)
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            file.save(filepath)
+            public_url = f"/static/uploads/{filename}"
+        
+        # Update database (use profile_picture column for consistency)
+        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (public_url, session["user_id"]))
+        conn.commit()
+        conn.close()
+        
+        # Update session with the public URL
+        if public_url.startswith("/static/"):
+            session["profile_pic"] = public_url.replace("/static/", "", 1)
+        else:
+            session["profile_pic"] = public_url
+        
+        log_activity(session["user_id"], "Updated profile picture")
+        
+        return jsonify({"success": True, "url": public_url})
+        
+    except Exception as e:
+        app.logger.exception("Student profile upload error")
+        return jsonify({"success": False, "error": str(e)}), 500
 
 # Student: Remove Profile Picture
 @app.route("/student/profile/remove_picture", methods=["POST"])
@@ -3373,15 +3422,17 @@ def student_remove_picture():
     user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
-        # Delete file from disk
+        # Delete from Supabase if it's a Supabase URL
+        from supabase_storage import delete_profile_picture
+        delete_profile_picture(user["profile_picture"])
+        
+        # Also delete local file if it exists (for old uploads)
         db_path = user["profile_picture"]
         if db_path.startswith("/static/"):
             rel_path = db_path.replace("/static/", "", 1)
-        else:
-            rel_path = db_path
-        filepath = os.path.join("static", rel_path)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+            filepath = os.path.join("static", rel_path)
+            if os.path.exists(filepath):
+                os.remove(filepath)
         
         # Update database (use profile_picture column for consistency)
         conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"]))
@@ -5122,9 +5173,14 @@ def student_classroom_detail(classroom_id):
                student_submissions.submitted_at as student_submitted_at
         FROM exams
         LEFT JOIN submissions ON submissions.exam_id = exams.id
-        LEFT JOIN submissions as student_submissions ON student_submissions.exam_id = exams.id AND student_submissions.student_id = %s
+        LEFT JOIN (
+            SELECT id, exam_id, student_id, score, result_published, submitted_at
+            FROM submissions
+            WHERE student_id = %s
+        ) as student_submissions ON student_submissions.exam_id = exams.id
         WHERE exams.classroom_id = %s
-        GROUP BY exams.id
+        GROUP BY exams.id, student_submissions.id, student_submissions.score, 
+                 student_submissions.result_published, student_submissions.submitted_at
         ORDER BY exams.exam_date DESC
     """, (sid, classroom_id)).fetchall()
     
@@ -6022,26 +6078,44 @@ def faculty_upload_picture():
         return jsonify({"success": False, "error": "File size exceeds 2MB limit."}), 400
     
     try:
-        # Save cropped image
-        upload_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+        # Upload to Supabase Storage
+        from supabase_storage import upload_profile_picture, delete_profile_picture
         
-        # Generate unique filename
-        timestamp = datetime.now().strftime('%Y%m%d')
-        filename = f"profile_faculty_{session['user_id']}_{timestamp}.jpg"
-        filepath = os.path.join(upload_folder, filename)
-        file.save(filepath)
+        # Delete old profile picture if exists
+        conn = get_db()
+        old_pic = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
+        if old_pic and old_pic["profile_picture"]:
+            delete_profile_picture(old_pic["profile_picture"])
+        
+        # Upload new picture
+        public_url = upload_profile_picture(file, session["user_id"])
+        
+        if not public_url:
+            # Fallback to local storage if Supabase fails
+            upload_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
+            if not os.path.exists(upload_folder):
+                os.makedirs(upload_folder)
+            
+            timestamp = datetime.now().strftime('%Y%m%d')
+            filename = f"profile_faculty_{session['user_id']}_{timestamp}.jpg"
+            filepath = os.path.join(upload_folder, filename)
+            file.save(filepath)
+            public_url = f"/static/uploads/{filename}"
         
         # Update database (use profile_picture column for consistency)
-        conn = get_db()
-        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (f"/static/uploads/{filename}", session["user_id"]))
+        conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (public_url, session["user_id"]))
         conn.commit()
         conn.close()
-        session["profile_pic"] = f"uploads/{filename}"
+        
+        # Update session with the public URL
+        if public_url.startswith("/static/"):
+            session["profile_pic"] = public_url.replace("/static/", "", 1)
+        else:
+            session["profile_pic"] = public_url
+        
         log_activity(session["user_id"], "Updated profile picture")
 
-        return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": f"/static/uploads/{filename}"})
+        return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": public_url})
     except Exception as e:
         app.logger.exception("Faculty profile upload error")
         return jsonify({"success": False, "error": str(e)}), 500
@@ -6055,16 +6129,17 @@ def faculty_remove_picture():
     user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
-        # Delete file from disk
-        # Extract relative path from full path (e.g., "/static/uploads/file.jpg" -> "uploads/file.jpg")
+        # Delete from Supabase if it's a Supabase URL
+        from supabase_storage import delete_profile_picture
+        delete_profile_picture(user["profile_picture"])
+        
+        # Also delete local file if it exists (for old uploads)
         db_path = user["profile_picture"]
         if db_path.startswith("/static/"):
             rel_path = db_path.replace("/static/", "", 1)
-        else:
-            rel_path = db_path
-        filepath = os.path.join('static', rel_path)
-        if os.path.exists(filepath):
-            os.remove(filepath)
+            filepath = os.path.join('static', rel_path)
+            if os.path.exists(filepath):
+                os.remove(filepath)
         
         # Update database (use profile_picture column for consistency)
         conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"]))

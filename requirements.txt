@@ -5,3 +5,4 @@ fpdf2==2.8.7
 reportlab==4.0.7
 gunicorn==21.2.0
 psycopg2-binary==2.9.10
+supabase==2.3.4
