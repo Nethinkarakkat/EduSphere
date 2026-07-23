@@ -5422,8 +5422,8 @@ def publish_results(exam_id):
     return redirect("/faculty/results")
 
 
-@app.route("/view_validation/<exam_id>")
-def view_validation(exam_id):
+@app.route("/view_answers/<exam_id>")
+def view_answers(exam_id):
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     conn = get_db(); sid = session["user_id"]
     result = conn.execute("SELECT * FROM submissions WHERE student_id=%s AND exam_id=%s", (sid, exam_id)).fetchone()
