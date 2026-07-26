@@ -27,6 +27,17 @@ if DATABASE_URL:
 else:
     print("[STARTUP] DATABASE_URL not detected (SQLite mode enabled)")
 
+# Validate Supabase configuration
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
+print(f"[STARTUP] SUPABASE_URL: {'SET' if SUPABASE_URL else 'MISSING'}")
+print(f"[STARTUP] SUPABASE_SERVICE_KEY: {'SET' if SUPABASE_SERVICE_KEY else 'MISSING'}")
+
+if not SUPABASE_URL:
+    print("[STARTUP] ERROR: Missing SUPABASE_URL environment variable")
+if not SUPABASE_SERVICE_KEY:
+    print("[STARTUP] ERROR: Missing SUPABASE_SERVICE_KEY environment variable")
+
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
 app.permanent_session_lifetime = __import__("datetime").timedelta(minutes=30)
@@ -3080,10 +3091,13 @@ def admin_upload_picture():
         # Upload to Supabase Storage
         from supabase_storage import upload_profile_picture, delete_profile_picture
         
+        app.logger.info(f"Admin profile upload attempt - User ID: {session['user_id']}")
+        
         # Delete old profile picture if exists
         conn = get_db()
         old_pic = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         if old_pic and old_pic["profile_picture"]:
+            app.logger.info(f"Deleting old profile picture: {old_pic['profile_picture']}")
             delete_profile_picture(old_pic["profile_picture"])
         
         # Upload new picture to Supabase Storage
@@ -3091,6 +3105,7 @@ def admin_upload_picture():
         
         if not public_url:
             conn.close()
+            app.logger.error("Supabase upload returned None - upload failed")
             return jsonify({"success": False, "error": "Failed to upload to Supabase Storage. Please check your configuration."}), 500
         
         # Update database with Supabase public URL
@@ -3101,12 +3116,15 @@ def admin_upload_picture():
         # Update session with the public URL
         session["profile_pic"] = public_url
         
+        app.logger.info(f"Admin profile picture updated successfully - User ID: {session['user_id']}, URL: {public_url}")
+        
         log_activity(session["user_id"], "Updated profile picture")
         
         return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": public_url})
     except Exception as e:
-        app.logger.exception("Admin profile upload error")
-        return jsonify({"success": False, "error": str(e)}), 500
+        app.logger.exception(f"Admin profile upload failed - Exception type: {type(e).__name__}, Message: {str(e)}")
+        app.logger.error(f"Upload details - User ID: {session.get('user_id')}, File: {file.filename if file else 'N/A'}")
+        return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
 # ── Admin: Change Password ───────────────────────────────────────────────────
 @app.route("/admin/change_password", methods=["GET","POST"])
@@ -3364,10 +3382,13 @@ def student_upload_picture():
         # Upload to Supabase Storage
         from supabase_storage import upload_profile_picture, delete_profile_picture
         
+        app.logger.info(f"Student profile upload attempt - User ID: {session['user_id']}")
+        
         # Delete old profile picture if exists
         conn = get_db()
         old_pic = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         if old_pic and old_pic["profile_picture"]:
+            app.logger.info(f"Deleting old profile picture: {old_pic['profile_picture']}")
             delete_profile_picture(old_pic["profile_picture"])
         
         # Upload new picture to Supabase Storage
@@ -3375,6 +3396,7 @@ def student_upload_picture():
         
         if not public_url:
             conn.close()
+            app.logger.error("Supabase upload returned None - upload failed")
             return jsonify({"success": False, "error": "Failed to upload to Supabase Storage. Please check your configuration."}), 500
         
         # Update database with Supabase public URL
@@ -3385,13 +3407,16 @@ def student_upload_picture():
         # Update session with the public URL
         session["profile_pic"] = public_url
         
+        app.logger.info(f"Student profile picture updated successfully - User ID: {session['user_id']}, URL: {public_url}")
+        
         log_activity(session["user_id"], "Updated profile picture")
         
         return jsonify({"success": True, "url": public_url})
         
     except Exception as e:
-        app.logger.exception("Student profile upload error")
-        return jsonify({"success": False, "error": str(e)}), 500
+        app.logger.exception(f"Student profile upload failed - Exception type: {type(e).__name__}, Message: {str(e)}")
+        app.logger.error(f"Upload details - User ID: {session.get('user_id')}, File: {file.filename if file else 'N/A'}")
+        return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
 # Student: Remove Profile Picture
 @app.route("/student/profile/remove_picture", methods=["POST"])
@@ -6055,10 +6080,13 @@ def faculty_upload_picture():
         # Upload to Supabase Storage
         from supabase_storage import upload_profile_picture, delete_profile_picture
         
+        app.logger.info(f"Faculty profile upload attempt - User ID: {session['user_id']}")
+        
         # Delete old profile picture if exists
         conn = get_db()
         old_pic = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
         if old_pic and old_pic["profile_picture"]:
+            app.logger.info(f"Deleting old profile picture: {old_pic['profile_picture']}")
             delete_profile_picture(old_pic["profile_picture"])
         
         # Upload new picture to Supabase Storage
@@ -6066,6 +6094,7 @@ def faculty_upload_picture():
         
         if not public_url:
             conn.close()
+            app.logger.error("Supabase upload returned None - upload failed")
             return jsonify({"success": False, "error": "Failed to upload to Supabase Storage. Please check your configuration."}), 500
         
         # Update database with Supabase public URL
@@ -6076,12 +6105,15 @@ def faculty_upload_picture():
         # Update session with the public URL
         session["profile_pic"] = public_url
         
+        app.logger.info(f"Faculty profile picture updated successfully - User ID: {session['user_id']}, URL: {public_url}")
+        
         log_activity(session["user_id"], "Updated profile picture")
 
         return jsonify({"success": True, "message": "Profile picture updated successfully.", "image_url": public_url})
     except Exception as e:
-        app.logger.exception("Faculty profile upload error")
-        return jsonify({"success": False, "error": str(e)}), 500
+        app.logger.exception(f"Faculty profile upload failed - Exception type: {type(e).__name__}, Message: {str(e)}")
+        app.logger.error(f"Upload details - User ID: {session.get('user_id')}, File: {file.filename if file else 'N/A'}")
+        return jsonify({"success": False, "error": f"Upload failed: {str(e)}"}), 500
 
 
 @app.route("/faculty/profile/remove_picture", methods=["POST"])
