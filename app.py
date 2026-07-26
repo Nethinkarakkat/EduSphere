@@ -3033,19 +3033,11 @@ def admin_remove_picture():
     user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
-        db_path = user["profile_picture"]
-        
-        # Delete from Supabase if it's a Supabase URL
+        # Delete from Supabase Storage
         from supabase_storage import delete_profile_picture
-        delete_profile_picture(db_path)
+        delete_profile_picture(user["profile_picture"])
         
-        # Also delete local file if it exists (for old uploads)
-        if db_path.startswith("/static/"):
-            rel_path = db_path.replace("/static/", "", 1)
-            filepath = os.path.join('static', rel_path)
-            if os.path.exists(filepath):
-                os.remove(filepath)
-        
+        # Update database
         conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"],))
         conn.commit()
         conn.close()
@@ -3094,31 +3086,20 @@ def admin_upload_picture():
         if old_pic and old_pic["profile_picture"]:
             delete_profile_picture(old_pic["profile_picture"])
         
-        # Upload new picture
+        # Upload new picture to Supabase Storage
         public_url = upload_profile_picture(file, session["user_id"])
         
         if not public_url:
-            # Fallback to local storage if Supabase fails
-            upload_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
-            if not os.path.exists(upload_folder):
-                os.makedirs(upload_folder)
-            
-            timestamp = datetime.now().strftime('%Y%m%d')
-            filename = f"profile_admin_{session['user_id']}_{timestamp}.jpg"
-            filepath = os.path.join(upload_folder, filename)
-            file.save(filepath)
-            public_url = f"/static/uploads/{filename}"
+            conn.close()
+            return jsonify({"success": False, "error": "Failed to upload to Supabase Storage. Please check your configuration."}), 500
         
-        # Update database
+        # Update database with Supabase public URL
         conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (public_url, session["user_id"]))
         conn.commit()
         conn.close()
         
         # Update session with the public URL
-        if public_url.startswith("/static/"):
-            session["profile_pic"] = public_url.replace("/static/", "", 1)
-        else:
-            session["profile_pic"] = public_url
+        session["profile_pic"] = public_url
         
         log_activity(session["user_id"], "Updated profile picture")
         
@@ -3389,27 +3370,20 @@ def student_upload_picture():
         if old_pic and old_pic["profile_picture"]:
             delete_profile_picture(old_pic["profile_picture"])
         
-        # Upload new picture
+        # Upload new picture to Supabase Storage
         public_url = upload_profile_picture(file, session["user_id"])
         
         if not public_url:
-            # Fallback to local storage if Supabase fails
-            filename = f"student_{session['user_id']}_{int(datetime.now().timestamp())}.jpg"
-            filepath = os.path.join("static", "uploads", filename)
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
-            file.save(filepath)
-            public_url = f"/static/uploads/{filename}"
+            conn.close()
+            return jsonify({"success": False, "error": "Failed to upload to Supabase Storage. Please check your configuration."}), 500
         
-        # Update database (use profile_picture column for consistency)
+        # Update database with Supabase public URL
         conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (public_url, session["user_id"]))
         conn.commit()
         conn.close()
         
         # Update session with the public URL
-        if public_url.startswith("/static/"):
-            session["profile_pic"] = public_url.replace("/static/", "", 1)
-        else:
-            session["profile_pic"] = public_url
+        session["profile_pic"] = public_url
         
         log_activity(session["user_id"], "Updated profile picture")
         
@@ -3429,19 +3403,11 @@ def student_remove_picture():
     user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
-        # Delete from Supabase if it's a Supabase URL
+        # Delete from Supabase Storage
         from supabase_storage import delete_profile_picture
         delete_profile_picture(user["profile_picture"])
         
-        # Also delete local file if it exists (for old uploads)
-        db_path = user["profile_picture"]
-        if db_path.startswith("/static/"):
-            rel_path = db_path.replace("/static/", "", 1)
-            filepath = os.path.join("static", rel_path)
-            if os.path.exists(filepath):
-                os.remove(filepath)
-        
-        # Update database (use profile_picture column for consistency)
+        # Update database
         conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"]))
         conn.commit()
         conn.close()
@@ -6095,31 +6061,20 @@ def faculty_upload_picture():
         if old_pic and old_pic["profile_picture"]:
             delete_profile_picture(old_pic["profile_picture"])
         
-        # Upload new picture
+        # Upload new picture to Supabase Storage
         public_url = upload_profile_picture(file, session["user_id"])
         
         if not public_url:
-            # Fallback to local storage if Supabase fails
-            upload_folder = os.path.join(os.path.dirname(__file__), 'static', 'uploads')
-            if not os.path.exists(upload_folder):
-                os.makedirs(upload_folder)
-            
-            timestamp = datetime.now().strftime('%Y%m%d')
-            filename = f"profile_faculty_{session['user_id']}_{timestamp}.jpg"
-            filepath = os.path.join(upload_folder, filename)
-            file.save(filepath)
-            public_url = f"/static/uploads/{filename}"
+            conn.close()
+            return jsonify({"success": False, "error": "Failed to upload to Supabase Storage. Please check your configuration."}), 500
         
-        # Update database (use profile_picture column for consistency)
+        # Update database with Supabase public URL
         conn.execute("UPDATE users SET profile_picture=%s WHERE id=%s", (public_url, session["user_id"]))
         conn.commit()
         conn.close()
         
         # Update session with the public URL
-        if public_url.startswith("/static/"):
-            session["profile_pic"] = public_url.replace("/static/", "", 1)
-        else:
-            session["profile_pic"] = public_url
+        session["profile_pic"] = public_url
         
         log_activity(session["user_id"], "Updated profile picture")
 
@@ -6137,19 +6092,11 @@ def faculty_remove_picture():
     user = conn.execute("SELECT profile_picture FROM users WHERE id=%s", (session["user_id"],)).fetchone()
     
     if user and user["profile_picture"]:
-        # Delete from Supabase if it's a Supabase URL
+        # Delete from Supabase Storage
         from supabase_storage import delete_profile_picture
         delete_profile_picture(user["profile_picture"])
         
-        # Also delete local file if it exists (for old uploads)
-        db_path = user["profile_picture"]
-        if db_path.startswith("/static/"):
-            rel_path = db_path.replace("/static/", "", 1)
-            filepath = os.path.join('static', rel_path)
-            if os.path.exists(filepath):
-                os.remove(filepath)
-        
-        # Update database (use profile_picture column for consistency)
+        # Update database
         conn.execute("UPDATE users SET profile_picture='' WHERE id=%s", (session["user_id"]))
         conn.commit()
         conn.close()
