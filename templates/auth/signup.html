@@ -134,18 +134,18 @@
         <div class="form-group">
           <label class="form-label">Password</label>
           <div class="position-relative">
-            <input type="password" name="password" id="password" class="form-control" placeholder="Choose a strong password" required>
-            <button type="button" class="btn btn-link position-absolute end-0 top-50 translate-middle-y" onclick="togglePassword('password', 'passwordIcon')" style="z-index: 10; padding: 0 12px;">
-              <i id="passwordIcon" class="bi bi-eye"></i>
+            <input id="signupPassword" type="password" name="password" class="form-control pe-5" placeholder="Choose a strong password" required>
+            <button type="button" class="password-toggle-btn" onclick="togglePassword('signupPassword','signupPasswordIcon')">
+              <i id="signupPasswordIcon" class="bi bi-eye"></i>
             </button>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Confirm Password</label>
           <div class="position-relative">
-            <input type="password" name="confirm_password" id="confirm_password" class="form-control" placeholder="Confirm your password" required>
-            <button type="button" class="btn btn-link position-absolute end-0 top-50 translate-middle-y" onclick="togglePassword('confirm_password', 'confirmPasswordIcon')" style="z-index: 10; padding: 0 12px;">
-              <i id="confirmPasswordIcon" class="bi bi-eye"></i>
+            <input id="signupConfirmPassword" type="password" name="confirm_password" class="form-control pe-5" placeholder="Confirm your password" required>
+            <button type="button" class="password-toggle-btn" onclick="togglePassword('signupConfirmPassword','signupConfirmPasswordIcon')">
+              <i id="signupConfirmPasswordIcon" class="bi bi-eye"></i>
             </button>
           </div>
         </div>

@@ -967,6 +967,23 @@ select.form-select option { background: var(--input-bg); color: var(--input-text
   color: var(--text-color);
 }
 
+/* Password toggle button */
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  color: var(--bs-secondary-color);
+  z-index: 5;
+}
+.password-toggle-btn:hover {
+  color: var(--bs-primary);
+}
+
 .opt {
   display: flex; align-items: center; gap: 10px;
   padding: 9px 13px; border: 1.5px solid var(--border-color);
