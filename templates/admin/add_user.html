@@ -22,7 +22,10 @@
         </div>
         <div class="form-group">
           <label class="form-label">Password</label>
-          <input type="password" name="password" class="form-control" placeholder="Set a password" required>
+          <div class="password-input-wrapper">
+            <input type="password" id="password" name="password" class="form-control" placeholder="Set a password" required>
+            <i id="password-toggle-icon" class="bi bi-eye password-toggle-icon" onclick="togglePassword('password', 'password-toggle-icon')"></i>
+          </div>
         </div>
         <div class="form-group">
           <label class="form-label">Role</label>

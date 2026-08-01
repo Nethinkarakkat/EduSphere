@@ -150,7 +150,10 @@
         
         <div class="form-group" id="passwordGroup" style="display:none;">
           <label class="form-label">Current Password *</label>
-          <input type="password" name="current_password" class="form-control" placeholder="Enter current password to confirm email change">
+          <div class="password-input-wrapper">
+            <input type="password" id="current_password" name="current_password" class="form-control" placeholder="Enter current password to confirm email change">
+            <i id="current-password-toggle-icon" class="bi bi-eye password-toggle-icon" onclick="togglePassword('current_password', 'current-password-toggle-icon')"></i>
+          </div>
           <div class="form-helper">Required to change email address.</div>
         </div>
 
