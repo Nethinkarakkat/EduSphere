@@ -1,12 +1,12 @@
 // EduSphere Application JavaScript
 
-// Toggle password visibility
-function togglePassword(inputId, iconId) {
+// Toggle password visibility - globally accessible
+window.togglePassword = function(inputId, iconId) {
     const input = document.getElementById(inputId);
     const icon = document.getElementById(iconId);
 
     if (!input || !icon) {
-        console.error("Password toggle elements not found:", inputId, iconId);
+        console.error("Password elements not found:", inputId, iconId);
         return;
     }
 
@@ -19,4 +19,4 @@ function togglePassword(inputId, iconId) {
         icon.classList.remove("bi-eye-slash");
         icon.classList.add("bi-eye");
     }
-}
+};

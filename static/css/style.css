@@ -945,42 +945,26 @@ select.form-select option { background: var(--input-bg); color: var(--input-text
 }
 .q-text { font-size: 15px; font-weight: 500; margin-bottom: 14px; }
 
-/* Password toggle icon */
-.password-input-wrapper {
+/* Password toggle - new implementation */
+.password-wrapper {
   position: relative;
 }
-.password-toggle-icon {
+.password-input {
+  padding-right: 45px;
+}
+.password-toggle {
   position: absolute;
-  right: 12px;
   top: 50%;
-  transform: translateY(-50%);
-  cursor: pointer;
-  color: var(--muted);
-  font-size: 18px;
-  z-index: 10;
-  transition: color 0.2s;
-}
-.password-toggle-icon:hover {
-  color: var(--text-color);
-}
-[data-theme="dark"] .password-toggle-icon:hover {
-  color: var(--text-color);
-}
-
-/* Password toggle button */
-.password-toggle-btn {
-  position: absolute;
   right: 12px;
-  top: 50%;
   transform: translateY(-50%);
   border: none;
-  background: transparent;
-  padding: 0;
+  background: none;
   cursor: pointer;
-  color: var(--bs-secondary-color);
-  z-index: 5;
+  color: #6c757d;
+  padding: 0;
+  z-index: 10;
 }
-.password-toggle-btn:hover {
+.password-toggle:hover {
   color: var(--bs-primary);
 }
 

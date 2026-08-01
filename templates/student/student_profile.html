@@ -150,9 +150,9 @@
         
         <div class="form-group" id="passwordGroup" style="display:none;">
           <label class="form-label">Current Password *</label>
-          <div class="position-relative">
-            <input id="studentProfilePassword" type="password" name="current_password" class="form-control pe-5" placeholder="Enter current password to confirm email change">
-            <button type="button" class="password-toggle-btn" onclick="togglePassword('studentProfilePassword','studentProfilePasswordIcon')">
+          <div class="password-wrapper">
+            <input id="studentProfilePassword" type="password" name="current_password" class="form-control password-input" placeholder="Enter current password to confirm email change">
+            <button type="button" class="password-toggle" onclick="togglePassword('studentProfilePassword','studentProfilePasswordIcon')">
               <i id="studentProfilePasswordIcon" class="bi bi-eye"></i>
             </button>
           </div>

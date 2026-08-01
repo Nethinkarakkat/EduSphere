@@ -5,6 +5,7 @@
   <title>EduSphere — Sign Up</title>
   <!-- CRITICAL: Load ThemeManager BEFORE CSS to prevent theme flash -->
   <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
   <link rel="icon" type="image/png" href="{{ url_for('static', filename='images/logo.png') }}">
@@ -133,18 +134,18 @@
         </div>
         <div class="form-group">
           <label class="form-label">Password</label>
-          <div class="position-relative">
-            <input id="signupPassword" type="password" name="password" class="form-control pe-5" placeholder="Choose a strong password" required>
-            <button type="button" class="password-toggle-btn" onclick="togglePassword('signupPassword','signupPasswordIcon')">
+          <div class="password-wrapper">
+            <input id="signupPassword" type="password" name="password" class="form-control password-input" placeholder="Choose a strong password" required>
+            <button type="button" class="password-toggle" onclick="togglePassword('signupPassword','signupPasswordIcon')">
               <i id="signupPasswordIcon" class="bi bi-eye"></i>
             </button>
           </div>
         </div>
         <div class="form-group">
           <label class="form-label">Confirm Password</label>
-          <div class="position-relative">
-            <input id="signupConfirmPassword" type="password" name="confirm_password" class="form-control pe-5" placeholder="Confirm your password" required>
-            <button type="button" class="password-toggle-btn" onclick="togglePassword('signupConfirmPassword','signupConfirmPasswordIcon')">
+          <div class="password-wrapper">
+            <input id="signupConfirmPassword" type="password" name="confirm_password" class="form-control password-input" placeholder="Confirm your password" required>
+            <button type="button" class="password-toggle" onclick="togglePassword('signupConfirmPassword','signupConfirmPasswordIcon')">
               <i id="signupConfirmPasswordIcon" class="bi bi-eye"></i>
             </button>
           </div>
