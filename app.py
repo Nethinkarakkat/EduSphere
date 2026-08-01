@@ -2227,12 +2227,16 @@ def reports():
                exams.title, exams.exam_date, exams.subject, exams.id as exam_id,
                faculty.name as faculty_name,
                submissions.score, submissions.submitted_at,
-               COUNT(DISTINCT questions.id) AS total
+               exam_totals.total
                FROM submissions
                JOIN users    ON users.id=submissions.student_id
                JOIN exams    ON exams.id=submissions.exam_id
                JOIN users AS faculty ON faculty.id=exams.faculty_id
-               JOIN questions ON questions.exam_id=exams.id"""
+               JOIN (
+                   SELECT exam_id, COUNT(DISTINCT id) AS total
+                   FROM questions
+                   GROUP BY exam_id
+               ) exam_totals ON exam_totals.exam_id = exams.id"""
     filters, params = [], []
     if sf:  filters.append("users.id=%s");          params.append(sf)
     if ef:  filters.append("exams.id=%s");          params.append(ef)
@@ -2241,7 +2245,7 @@ def reports():
     if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
     if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
-    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.id, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
+    query += " ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
 
     # Faculty performance
@@ -2304,11 +2308,16 @@ def export_csv():
     
     query = """
         SELECT users.name as student, exams.title, exams.exam_date, exams.subject,
-               faculty.name as faculty, submissions.score, COUNT(questions.id) as total, submissions.submitted_at, exams.pass_percentage
-        FROM submissions JOIN users ON users.id=submissions.student_id
+               faculty.name as faculty, submissions.score, exam_totals.total, submissions.submitted_at, exams.pass_percentage
+        FROM submissions
+        JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
         JOIN users AS faculty ON faculty.id=exams.faculty_id
-        JOIN questions ON questions.exam_id=exams.id"""
+        JOIN (
+            SELECT exam_id, COUNT(id) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = exams.id"""
     filters, params = [], []
     if sf:  filters.append("users.id=%s");          params.append(sf)
     if ef:  filters.append("exams.id=%s");          params.append(ef)
@@ -2317,7 +2326,7 @@ def export_csv():
     if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
     if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
     if filters: query += " WHERE " + " AND ".join(filters)
-    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.id, submissions.score, submissions.submitted_at, exams.pass_percentage ORDER BY submissions.submitted_at DESC"
+    query += " ORDER BY submissions.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
     conn.close()
     
@@ -2371,11 +2380,16 @@ def export_pdf():
         
         query = """
             SELECT users.name as student, exams.title, exams.exam_date, exams.subject,
-                   faculty.name as faculty, submissions.score, COUNT(questions.id) as total, submissions.submitted_at
-            FROM submissions JOIN users ON users.id=submissions.student_id
+                   faculty.name as faculty, submissions.score, exam_totals.total, submissions.submitted_at
+            FROM submissions
+            JOIN users ON users.id=submissions.student_id
             JOIN exams ON exams.id=submissions.exam_id
             JOIN users AS faculty ON faculty.id=exams.faculty_id
-            JOIN questions ON questions.exam_id=exams.id"""
+            JOIN (
+                SELECT exam_id, COUNT(id) as total
+                FROM questions
+                GROUP BY exam_id
+            ) exam_totals ON exam_totals.exam_id = exams.id"""
         filters, params = [], []
         if sf:  filters.append("users.id=%s");          params.append(sf)
         if ef:  filters.append("exams.id=%s");          params.append(ef)
@@ -2384,7 +2398,7 @@ def export_pdf():
         if dt:  filters.append("exams.exam_date<=%s");  params.append(dt)
         if sq:  filters.append("(users.name LIKE %s OR exams.title LIKE %s)"); params += [f"%{sq}%",f"%{sq}%"]
         if filters: query += " WHERE " + " AND ".join(filters)
-        query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.exam_date, exams.subject, faculty.name, submissions.id, submissions.score, submissions.submitted_at ORDER BY submissions.submitted_at DESC"
+        query += " ORDER BY submissions.submitted_at DESC"
         data = conn.execute(query, params).fetchall()
         conn.close()
         
@@ -2860,13 +2874,17 @@ def admin_reports():
     # Build query for results
     query = """
         SELECT s.name, e.title, e.exam_date, u.name as faculty_name, c.name as classroom_name,
-               sub.score, COUNT(q.id) as total
+               sub.score, exam_totals.total
         FROM submissions sub
         JOIN users s ON s.id = sub.student_id
         JOIN exams e ON e.id = sub.exam_id
         JOIN users u ON u.id = e.faculty_id
         LEFT JOIN classrooms c ON c.id = e.classroom_id
-        LEFT JOIN questions q ON q.exam_id = e.id
+        JOIN (
+            SELECT exam_id, COUNT(id) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = e.id
         WHERE 1=1
     """
     params = []
@@ -2893,7 +2911,7 @@ def admin_reports():
         query += " AND sub.submitted_at <= %s"
         params.append(date_to)
     
-    query += " GROUP BY sub.id, s.name, e.title, e.exam_date, u.name, c.name, sub.score, sub.submitted_at ORDER BY sub.submitted_at DESC"
+    query += " ORDER BY sub.submitted_at DESC"
     data = conn.execute(query, params).fetchall()
     
     # Faculty stats
@@ -2935,14 +2953,17 @@ def admin_reports_export_csv():
     conn = get_db()
     data = conn.execute("""
         SELECT s.name as student_name, e.title as exam_title, u.name as faculty_name,
-               c.name as classroom_name, sub.score, COUNT(q.id) as total, sub.submitted_at
+               c.name as classroom_name, sub.score, exam_totals.total, sub.submitted_at
         FROM submissions sub
         JOIN users s ON s.id = sub.student_id
         JOIN exams e ON e.id = sub.exam_id
         JOIN users u ON u.id = e.faculty_id
         LEFT JOIN classrooms c ON c.id = e.classroom_id
-        LEFT JOIN questions q ON q.exam_id = e.id
-        GROUP BY sub.id, s.name, e.title, u.name, c.name, sub.score, sub.submitted_at
+        JOIN (
+            SELECT exam_id, COUNT(id) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = e.id
         ORDER BY sub.submitted_at DESC
     """).fetchall()
     conn.close()
@@ -3713,10 +3734,15 @@ def faculty_results():
                exams.title, exams.subject,
                exams.exam_date, submissions.score, submissions.submitted_at,
                exams.id as exam_id, exams.classroom_id, exams.pass_percentage,
-               SUM(questions.marks) as total
-               FROM submissions JOIN users ON users.id=submissions.student_id
+               exam_totals.total_marks
+               FROM submissions
+               JOIN users ON users.id=submissions.student_id
                JOIN exams ON exams.id=submissions.exam_id
-               JOIN questions ON questions.exam_id=exams.id
+               JOIN (
+                   SELECT exam_id, SUM(marks) as total_marks
+                   FROM questions
+                   GROUP BY exam_id
+               ) exam_totals ON exam_totals.exam_id = exams.id
                WHERE exams.faculty_id=%s"""
     params = [session["user_id"]]
     
@@ -3731,20 +3757,18 @@ def faculty_results():
         like_term = f"%{sel_search}%"
         params.extend([like_term, like_term, like_term])
     
-    query += " GROUP BY users.id, users.name, users.email, users.reg_number, exams.id, exams.title, exams.subject, exams.exam_date, submissions.score, submissions.submitted_at, exams.classroom_id, exams.pass_percentage"
-    
-    # Pass/Fail filter must use HAVING clause after GROUP BY
+    # Pass/Fail filter
     if sel_result:
         if sel_result == "pass":
-            query += " HAVING submissions.score >= (SUM(questions.marks) * exams.pass_percentage / 100.0)"
+            query += " AND submissions.score >= (exam_totals.total_marks * exams.pass_percentage / 100.0)"
         elif sel_result == "fail":
-            query += " HAVING submissions.score < (SUM(questions.marks) * exams.pass_percentage / 100.0)"
+            query += " AND submissions.score < (exam_totals.total_marks * exams.pass_percentage / 100.0)"
     
     # Sorting
     if sel_sort == "score_desc":
-        query += " ORDER BY (CAST(submissions.score AS FLOAT)/total) DESC"
+        query += " ORDER BY (CAST(submissions.score AS FLOAT)/exam_totals.total_marks) DESC"
     elif sel_sort == "score_asc":
-        query += " ORDER BY (CAST(submissions.score AS FLOAT)/total) ASC"
+        query += " ORDER BY (CAST(submissions.score AS FLOAT)/exam_totals.total_marks) ASC"
     elif sel_sort == "date_desc":
         query += " ORDER BY submissions.submitted_at DESC"
     elif sel_sort == "date_asc":
@@ -3760,7 +3784,7 @@ def faculty_results():
     conn.close()
     
     # Correct pass/fail using is_pass helper
-    pass_count = sum(1 for r in results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
+    pass_count = sum(1 for r in results if r["total_marks"] and is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
     fail_count = len(results) - pass_count
     
     return render_template("faculty/faculty_results.html", results=results, my_exams=my_exams,
@@ -3786,12 +3810,17 @@ def faculty_export_csv():
     sel_sort = request.args.get("sort","")
     sel_search = request.args.get("search","").strip()
     
-    query = """SELECT users.name as student_name, exams.title, exams.subject, exams.exam_date,
+    query = """SELECT users.name as student_name, users.reg_number, exams.title, exams.subject, exams.exam_date,
                submissions.score, submissions.submitted_at, exams.id as exam_id, exams.classroom_id,
-               exams.pass_percentage, SUM(questions.marks) as total
-               FROM submissions JOIN users ON users.id=submissions.student_id
+               exams.pass_percentage, exam_totals.total_marks
+               FROM submissions
+               JOIN users ON users.id=submissions.student_id
                JOIN exams ON exams.id=submissions.exam_id
-               JOIN questions ON questions.exam_id=exams.id
+               JOIN (
+                   SELECT exam_id, SUM(marks) as total_marks
+                   FROM questions
+                   GROUP BY exam_id
+               ) exam_totals ON exam_totals.exam_id = exams.id
                WHERE exams.faculty_id=%s"""
     params = [session["user_id"]]
     
@@ -3806,20 +3835,18 @@ def faculty_export_csv():
         like_term = f"%{sel_search}%"
         params.extend([like_term, like_term, like_term])
     
-    query += " GROUP BY users.id, users.name, exams.id, exams.title, exams.subject, exams.exam_date, submissions.score, submissions.submitted_at, exams.classroom_id, exams.pass_percentage"
-    
-    # Pass/Fail filter must use HAVING clause after GROUP BY
+    # Pass/Fail filter
     if sel_result:
         if sel_result == "pass":
-            query += " HAVING submissions.score >= (SUM(questions.marks) * exams.pass_percentage / 100.0)"
+            query += " AND submissions.score >= (exam_totals.total_marks * exams.pass_percentage / 100.0)"
         elif sel_result == "fail":
-            query += " HAVING submissions.score < (SUM(questions.marks) * exams.pass_percentage / 100.0)"
+            query += " AND submissions.score < (exam_totals.total_marks * exams.pass_percentage / 100.0)"
     
     # Sorting
     if sel_sort == "score_desc":
-        query += " ORDER BY (CAST(submissions.score AS FLOAT)/total) DESC"
+        query += " ORDER BY (CAST(submissions.score AS FLOAT)/exam_totals.total_marks) DESC"
     elif sel_sort == "score_asc":
-        query += " ORDER BY (CAST(submissions.score AS FLOAT)/total) ASC"
+        query += " ORDER BY (CAST(submissions.score AS FLOAT)/exam_totals.total_marks) ASC"
     elif sel_sort == "date_desc":
         query += " ORDER BY submissions.submitted_at DESC"
     elif sel_sort == "date_asc":
@@ -3834,16 +3861,16 @@ def faculty_export_csv():
     w.writerow([f"# Generated at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
     w.writerow(["Student","Exam","Subject","Date","Score","Total","Percentage","Result","Submitted"])
     for r in results:
-        pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
-        result = "Pass" if is_pass(r["score"], r["total"], r["pass_percentage"] or 50) else "Fail"
+        pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
+        result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
         w.writerow([r["student_name"],r["title"],r["subject"],r["exam_date"],
-                    r["score"],r["total"],f"{pct}%",result,r["submitted_at"]])
+                    r["score"],r["total_marks"],f"{pct}%",result,r["submitted_at"]])
     
     # Summary row
     total_count = len(results)
-    pass_count = sum(1 for r in results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
+    pass_count = sum(1 for r in results if r["total_marks"] and is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
     fail_count = total_count - pass_count
-    avg_pct = sum(round(r["score"]/r["total"]*100,1) if r["total"] else 0 for r in results) / total_count if total_count else 0
+    avg_pct = sum(round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0 for r in results) / total_count if total_count else 0
     w.writerow([])
     w.writerow(["SUMMARY","","","","","","","",""])
     w.writerow(["Total Records", total_count, "", "", "", "", "", "", ""])
@@ -3882,12 +3909,17 @@ def faculty_export_pdf():
         sel_sort = request.args.get("sort","")
         sel_search = request.args.get("search","").strip()
         
-        query = """SELECT users.name as student_name, exams.title, exams.subject, exams.exam_date,
+        query = """SELECT users.name as student_name, users.reg_number, exams.title, exams.subject, exams.exam_date,
                    submissions.score, submissions.submitted_at, exams.id as exam_id, exams.classroom_id,
-                   exams.pass_percentage, SUM(questions.marks) as total
-                   FROM submissions JOIN users ON users.id=submissions.student_id
+                   exams.pass_percentage, exam_totals.total_marks
+                   FROM submissions
+                   JOIN users ON users.id=submissions.student_id
                    JOIN exams ON exams.id=submissions.exam_id
-                   JOIN questions ON questions.exam_id=exams.id
+                   JOIN (
+                       SELECT exam_id, SUM(marks) as total_marks
+                       FROM questions
+                       GROUP BY exam_id
+                   ) exam_totals ON exam_totals.exam_id = exams.id
                    WHERE exams.faculty_id=%s"""
         params = [session["user_id"]]
         
@@ -3902,20 +3934,18 @@ def faculty_export_pdf():
             like_term = f"%{sel_search}%"
             params.extend([like_term, like_term, like_term])
         
-        query += " GROUP BY users.id, exams.id"
-        
-        # Pass/Fail filter must use HAVING clause after GROUP BY
+        # Pass/Fail filter
         if sel_result:
             if sel_result == "pass":
-                query += " HAVING submissions.score >= (SUM(questions.marks) * exams.pass_percentage / 100.0)"
+                query += " AND submissions.score >= (exam_totals.total_marks * exams.pass_percentage / 100.0)"
             elif sel_result == "fail":
-                query += " HAVING submissions.score < (SUM(questions.marks) * exams.pass_percentage / 100.0)"
+                query += " AND submissions.score < (exam_totals.total_marks * exams.pass_percentage / 100.0)"
         
         # Sorting
         if sel_sort == "score_desc":
-            query += " ORDER BY (CAST(submissions.score AS FLOAT)/total) DESC"
+            query += " ORDER BY (CAST(submissions.score AS FLOAT)/exam_totals.total_marks) DESC"
         elif sel_sort == "score_asc":
-            query += " ORDER BY (CAST(submissions.score AS FLOAT)/total) ASC"
+            query += " ORDER BY (CAST(submissions.score AS FLOAT)/exam_totals.total_marks) ASC"
         elif sel_sort == "date_desc":
             query += " ORDER BY submissions.submitted_at DESC"
         elif sel_sort == "date_asc":
@@ -3928,9 +3958,9 @@ def faculty_export_pdf():
         
         # Calculate summary stats
         total_count = len(results)
-        pass_count = sum(1 for r in results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
+        pass_count = sum(1 for r in results if r["total_marks"] and is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
         fail_count = total_count - pass_count
-        avg_pct = sum(round(r["score"]/r["total"]*100,1) if r["total"] else 0 for r in results) / total_count if total_count else 0
+        avg_pct = sum(round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0 for r in results) / total_count if total_count else 0
         
         # Create PDF with shared configuration
         from flask import Response
@@ -3976,8 +4006,8 @@ def faculty_export_pdf():
         headers = ["Student", "Exam", "Subject", "Date", "Score", "Total", "%", "Result"]
         data = [headers]
         for r in results:
-            pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
-            result = "Pass" if is_pass(r["score"], r["total"], r["pass_percentage"] or 50) else "Fail"
+            pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
+            result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
             
             data.append([
                 Paragraph(r["student_name"] or "—", styles['name']),
@@ -3985,7 +4015,7 @@ def faculty_export_pdf():
                 Paragraph(r["subject"] or "—", styles['wrap']),
                 Paragraph(format_datetime(r["exam_date"]), styles['wrap']),
                 Paragraph(str(r["score"]), styles['wrap']),
-                Paragraph(str(r["total"]), styles['wrap']),
+                Paragraph(str(r["total_marks"]), styles['wrap']),
                 Paragraph(f"{pct}%", styles['wrap']),
                 Paragraph(result, styles['wrap'])
             ])
@@ -4268,13 +4298,17 @@ def student_analytics_export_pdf():
             SELECT users.id as student_id, users.name as student_name,
                    exams.id as exam_id, exams.title as exam_title, exams.subject,
                    exams.classroom_id, classrooms.name as classroom_name,
-                   submissions.score, SUM(questions.marks) as total,
+                   submissions.score, exam_totals.total_marks,
                    exams.pass_percentage
             FROM submissions
             JOIN users ON users.id=submissions.student_id
             JOIN exams ON exams.id=submissions.exam_id
             LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
-            JOIN questions ON questions.exam_id=exams.id
+            JOIN (
+                SELECT exam_id, SUM(marks) as total_marks
+                FROM questions
+                GROUP BY exam_id
+            ) exam_totals ON exam_totals.exam_id = exams.id
             WHERE exams.faculty_id=%s
         """
         params = [fid]
@@ -4289,7 +4323,7 @@ def student_analytics_export_pdf():
             query += " AND exams.subject=%s"
             params.append(sel_subject)
         
-        query += " GROUP BY users.id, exams.id"
+        query += " ORDER BY exams.title, users.name"
         
         results = conn.execute(query, params).fetchall()
         conn.close()
@@ -5645,7 +5679,7 @@ def faculty_analytics_export_pdf():
         if ef: query += " AND exams.id=%s"; params.append(ef)
         if cf: query += " AND exams.classroom_id=%s"; params.append(cf)
         if sf: query += " AND exams.subject=%s"; params.append(sf)
-        query += " GROUP BY exams.id ORDER BY exams.exam_date DESC"
+        query += " GROUP BY exams.id, exams.title, exams.subject, exams.exam_date ORDER BY exams.exam_date DESC"
         rows = conn.execute(query, params).fetchall()
         conn.close()
         total_attempts = sum(r["attempts"] or 0 for r in rows)
@@ -5842,14 +5876,18 @@ def student_export_pdf():
             SELECT exams.title, exams.subject, exams.exam_date,
                    submissions.score, submissions.submitted_at, exams.id as exam_id,
                    submissions.result_published, exams.pass_percentage,
-                   SUM(questions.marks) as total,
+                   exam_totals.total_marks,
                    faculty.name as faculty_name
             FROM submissions
             JOIN exams ON exams.id=submissions.exam_id
-            JOIN questions ON questions.exam_id=exams.id
+            JOIN (
+                SELECT exam_id, SUM(marks) as total_marks
+                FROM questions
+                GROUP BY exam_id
+            ) exam_totals ON exam_totals.exam_id = exams.id
             JOIN users as faculty ON faculty.id=exams.faculty_id
             WHERE submissions.student_id=%s
-            GROUP BY exams.id ORDER BY submissions.submitted_at DESC
+            ORDER BY submissions.submitted_at DESC
         """, (sid,)).fetchall()
         student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
         conn.close()
@@ -5858,9 +5896,9 @@ def student_export_pdf():
         total_count = len(results)
         published_results = [r for r in results if r["result_published"] == 1]
         pending_count = total_count - len(published_results)
-        pass_count = sum(1 for r in published_results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
-        fail_count = sum(1 for r in published_results if r["total"] and not is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
-        avg_pct = sum(round(r["score"]/r["total"]*100,1) if r["total"] else 0 for r in published_results) / len(published_results) if published_results else 0
+        pass_count = sum(1 for r in published_results if r["total_marks"] and is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
+        fail_count = sum(1 for r in published_results if r["total_marks"] and not is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
+        avg_pct = sum(round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0 for r in published_results) / len(published_results) if published_results else 0
         
         # Create PDF with shared configuration
         from flask import Response
@@ -5897,15 +5935,15 @@ def student_export_pdf():
         headers = ["Exam", "Subject", "Faculty", "Date", "Score", "Total", "%", "Result"]
         data = [headers]
         for r in results:
-            pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
-            result = "Pass" if is_pass(r["score"], r["total"], r["pass_percentage"] or 50) else "Fail"
+            pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
+            result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
             data.append([
                 Paragraph(r["title"] or "—", styles['wrap']),
                 Paragraph(r["subject"] or "—", styles['wrap']),
                 Paragraph(r["faculty_name"] or "—", styles['wrap']),
                 Paragraph(format_datetime(r["exam_date"]), styles['wrap']),
                 Paragraph(str(r["score"]), styles['wrap']),
-                Paragraph(str(r["total"]), styles['wrap']),
+                Paragraph(str(r["total_marks"]), styles['wrap']),
                 Paragraph(f"{pct}%", styles['wrap']),
                 Paragraph(result, styles['wrap'])
             ])
