@@ -28,6 +28,10 @@ else:
     print("[STARTUP] DATABASE_URL not detected (SQLite mode enabled)")
 
 # Validate Supabase configuration
+logger.info(f"SUPABASE_URL exists: {bool(os.getenv('SUPABASE_URL'))}")
+logger.info(f"SUPABASE_SERVICE_KEY exists: {bool(os.getenv('SUPABASE_SERVICE_KEY'))}")
+logger.info(f"SUPABASE_KEY exists: {bool(os.getenv('SUPABASE_KEY'))}")
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 print(f"[STARTUP] SUPABASE_URL: {'SET' if SUPABASE_URL else 'MISSING'}")
@@ -37,6 +41,19 @@ if not SUPABASE_URL:
     print("[STARTUP] ERROR: Missing SUPABASE_URL environment variable")
 if not SUPABASE_SERVICE_KEY:
     print("[STARTUP] ERROR: Missing SUPABASE_SERVICE_KEY environment variable")
+
+# Verify Supabase Storage connection at startup
+print("[STARTUP] Verifying Supabase Storage connection...")
+try:
+    from supabase_storage import verify_supabase_connection
+    if verify_supabase_connection():
+        print("[STARTUP] Supabase Storage connection verified successfully")
+    else:
+        print("[STARTUP] WARNING: Supabase Storage connection verification failed")
+except Exception as e:
+    print(f"[STARTUP] ERROR: Supabase Storage verification raised exception: {e}")
+    import traceback
+    traceback.print_exc()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")

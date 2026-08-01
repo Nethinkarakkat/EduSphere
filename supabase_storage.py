@@ -5,25 +5,93 @@ import os
 import uuid
 import logging
 from supabase import create_client
-from dotenv import load_dotenv
-
-load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Initialize Supabase client
+# Note: load_dotenv() is called in app.py before this module is imported
 supabase_url = os.getenv('SUPABASE_URL')
 supabase_key = os.getenv('SUPABASE_SERVICE_KEY') or os.getenv('SUPABASE_KEY')
 
+# Log configuration details (without exposing full key)
+logger.info(f"SUPABASE_URL = {repr(supabase_url)}")
+if supabase_key:
+    logger.info(f"SUPABASE_KEY_PREFIX = {supabase_key[:20]}")
+    logger.info(f"SUPABASE_KEY_LENGTH = {len(supabase_key)}")
+else:
+    logger.info("SUPABASE_KEY = None")
+
+# Validate and clean configuration
+if supabase_url:
+    supabase_url = supabase_url.strip()
+    
+    # Validate URL format
+    if not supabase_url.startswith('https://'):
+        logger.error(f"Invalid SUPABASE_URL: must start with https://, got: {repr(supabase_url)}")
+        supabase_url = None
+    
+    # Check for invalid URL patterns
+    invalid_patterns = ['/rest/v1', '/storage/v1', 'postgresql://']
+    for pattern in invalid_patterns:
+        if pattern in supabase_url:
+            logger.error(f"Invalid SUPABASE_URL: contains '{pattern}' - should be base URL only")
+            supabase_url = None
+
+if supabase_key:
+    supabase_key = supabase_key.strip()
+    
+    # Validate key format
+    if not supabase_key.startswith('sb_secret_'):
+        logger.warning(f"SUPABASE_KEY does not start with 'sb_secret_' - this may be an anon key, not a service key")
+        logger.warning(f"Service keys are required for server-side operations like Storage uploads")
+
 if supabase_url and supabase_key:
-    supabase = create_client(supabase_url, supabase_key)
-    logger.info(f"Supabase client initialized with URL: {supabase_url}")
+    try:
+        logger.info("Initializing Supabase client...")
+        supabase = create_client(supabase_url, supabase_key)
+        logger.info(f"Supabase client initialized successfully with URL: {supabase_url}")
+    except Exception as e:
+        logger.exception(f"Failed to initialize Supabase client: {type(e).__name__}: {e}")
+        supabase = None
 else:
     supabase = None
-    logger.error("Missing SUPABASE_URL or SUPABASE_SERVICE_KEY - Supabase Storage will not be available")
+    if not supabase_url:
+        logger.error("Missing SUPABASE_URL - Supabase Storage will not be available")
+    if not supabase_key:
+        logger.error("Missing SUPABASE_SERVICE_KEY or SUPABASE_KEY - Supabase Storage will not be available")
 
 BUCKET_NAME = 'profile-images'
+
+
+def verify_supabase_connection():
+    """
+    Verify Supabase Storage connection by listing buckets.
+    Should be called once at startup to validate configuration.
+    
+    Returns:
+        bool: True if connection successful, False otherwise
+    """
+    if not supabase:
+        logger.error("Cannot verify connection - Supabase client not initialized")
+        return False
+    
+    try:
+        logger.info("Verifying Supabase Storage connection...")
+        buckets = supabase.storage.list_buckets()
+        bucket_names = [bucket.name for bucket in buckets]
+        logger.info(f"Supabase Storage connection verified. Available buckets: {bucket_names}")
+        
+        if BUCKET_NAME in bucket_names:
+            logger.info(f"Required bucket '{BUCKET_NAME}' exists and is accessible")
+            return True
+        else:
+            logger.error(f"Required bucket '{BUCKET_NAME}' not found. Available buckets: {bucket_names}")
+            return False
+            
+    except Exception as e:
+        logger.exception(f"Supabase Storage connection verification failed: {type(e).__name__}: {e}")
+        return False
 
 
 def check_bucket_exists():
