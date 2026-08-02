@@ -3759,7 +3759,6 @@ def faculty_export_csv():
 
 @app.route("/faculty/results/export/pdf")
 def faculty_export_pdf():
-    from pdf_utils import build_report_pdf
     g = require_role("faculty")
     if g: return g
     try:
@@ -4091,7 +4090,6 @@ def student_analytics_export_csv():
 
 @app.route("/faculty/student_analytics/export/pdf")
 def student_analytics_export_pdf():
-    from pdf_utils import build_report_pdf
     import os
     
     g = require_role("faculty")
@@ -5410,7 +5408,6 @@ def faculty_analytics_export():
 
 @app.route("/faculty/analytics/export/pdf")
 def faculty_analytics_export_pdf():
-    from pdf_utils import build_report_pdf
     import os
     g = require_role("faculty")
     if g: return g
@@ -5575,7 +5572,6 @@ def student_results_export():
 
 @app.route("/student/results/export/pdf")
 def student_export_pdf():
-    from pdf_utils import build_report_pdf
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     try:
         conn = get_db(); sid = session["user_id"]
