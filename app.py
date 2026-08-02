@@ -1812,7 +1812,7 @@ def admin_activity_export_csv():
 
 @app.route("/admin/activity/export/pdf")
 def admin_activity_export_pdf():
-    from pdf_utils import build_report_pdf
+    from pdf_utils import build_generic_report
     import os
     g = require_role("admin")
     if g: return g
@@ -1850,25 +1850,20 @@ def admin_activity_export_pdf():
             ])
         
         # Summary items
-        summary_items = [
+        summary = [
             ["Total Records", str(len(logs))],
         ]
-        
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        return build_report_pdf(
+        return build_generic_report(
             title="ACTIVITY LOG REPORT",
+            summary=summary,
             headers=headers,
             rows=rows,
-            generated_time=generated_time,
             filename="activity_log.pdf",
-            landscape=False,
-            summary_items=summary_items,
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
     except Exception as e:
@@ -1948,9 +1943,8 @@ def admin_users_export_csv():
 
 @app.route("/admin/users/export/pdf")
 def admin_users_export_pdf():
-    from pdf_utils import build_report_pdf
+    from pdf_utils import build_generic_report
     import os
-    import traceback
     g = require_role("admin")
     if g: return g
     try:
@@ -1984,27 +1978,22 @@ def admin_users_export_pdf():
         
         # Summary items
         active_count = sum(1 for r in users if r["approved"])
-        summary_items = [
+        summary = [
             ["Total Records", str(len(users))],
             ["Active Users", str(active_count)],
             ["Pending Users", str(len(users) - active_count)],
         ]
         
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
-        
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        return build_report_pdf(
+        return build_generic_report(
             title="USERS REPORT",
+            summary=summary,
             headers=headers,
             rows=rows,
-            generated_time=generated_time,
             filename="users.pdf",
-            landscape=False,
-            summary_items=summary_items,
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
     except Exception as e:
@@ -2375,29 +2364,24 @@ def export_pdf():
             ])
         
         # Summary items
-        summary_items = [
+        summary = [
             ["Total Records", str(total_count)],
             ["Passed", str(pass_count)],
             ["Failed", str(fail_count)],
             ["Average %", f"{avg_pct:.1f}%"],
         ]
         
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
-        
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_report_pdf
-        return build_report_pdf(
+        from pdf_utils import build_generic_report
+        return build_generic_report(
             title="EXAM REPORT",
+            summary=summary,
             headers=headers,
             rows=data_rows,
-            generated_time=generated_time,
             filename="edusphere_report.pdf",
-            landscape=False,
-            summary_items=summary_items,
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
     except Exception as e:
@@ -3862,27 +3846,24 @@ def faculty_export_pdf():
             ])
         
         # Summary items
-        summary_items = [
+        summary = [
             ["Total Records", str(total_count)],
             ["Passed", str(pass_count)],
             ["Failed", str(fail_count)],
             ["Average %", f"{avg_pct:.1f}%"],
         ]
         
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
-        
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        return build_report_pdf(
+        from pdf_utils import build_generic_report
+        return build_generic_report(
             title="FACULTY EXAM REPORT",
+            summary=summary,
             headers=headers,
             rows=rows,
-            generated_time=generated_time,
             filename="faculty_results.pdf",
-            summary_items=summary_items,
             logo_path=logo_path
         )
     except Exception as e:
@@ -4179,26 +4160,21 @@ def student_analytics_export_pdf():
                 ])
         
         # Summary items
-        summary_items = [
+        summary = [
             ["Total Records", str(len(results))],
         ]
-        
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_report_pdf
-        return build_report_pdf(
+        from pdf_utils import build_generic_report
+        return build_generic_report(
             title="STUDENT ANALYTICS REPORT",
+            summary=summary,
             headers=headers,
             rows=data_rows,
-            generated_time=generated_time,
             filename="student_analytics.pdf",
-            landscape=False,
-            summary_items=summary_items,
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
     except Exception as e:
@@ -5488,27 +5464,22 @@ def faculty_analytics_export_pdf():
         if len(data_rows) == 0: data_rows.append(["—","—","—","—","—","—","—","—"])
         
         # Summary items
-        summary_items = [
+        summary = [
             ["Total Exams", str(len(rows))],
             ["Total Attempts", str(total_attempts)],
         ]
-        
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_report_pdf
-        return build_report_pdf(
+        from pdf_utils import build_generic_report
+        return build_generic_report(
             title="FACULTY ANALYTICS REPORT",
+            summary=summary,
             headers=headers,
             rows=data_rows,
-            generated_time=generated_time,
             filename="faculty_analytics.pdf",
-            landscape=False,
-            summary_items=summary_items,
             logo_path=logo_path if os.path.exists(logo_path) else None
         )
     except Exception as e:
@@ -5655,7 +5626,7 @@ def student_export_pdf():
             ])
         
         # Summary items
-        summary_items = [
+        summary = [
             ["Total Exams", str(total_count)],
             ["Published Results", str(len(published_results))],
             ["Passed", str(pass_count)],
@@ -5664,20 +5635,17 @@ def student_export_pdf():
             ["Average %", f"{avg_pct:.1f}%"],
         ]
         
-        # Generated time
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
-        
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        return build_report_pdf(
+        from pdf_utils import build_generic_report
+        return build_generic_report(
             title="STUDENT RESULT HISTORY REPORT",
+            summary=summary,
             headers=headers,
             rows=rows,
-            generated_time=generated_time,
             filename=f'{student["name"]}_results.pdf',
-            summary_items=summary_items,
             logo_path=logo_path
         )
     except Exception as e:
