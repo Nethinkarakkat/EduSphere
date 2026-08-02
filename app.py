@@ -59,6 +59,34 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
 app.permanent_session_lifetime = __import__("datetime").timedelta(minutes=30)
 
+# Safe date formatting helper for Python code (not Jinja templates)
+def safe_format_date(value, fmt='%d %b %Y %H:%M'):
+    """
+    Safely format a date value that might be a string or datetime object.
+    Returns formatted string or '—' if None/empty.
+    """
+    if value is None or value == '':
+        return '—'
+    if isinstance(value, str):
+        # If it's already a string, try to parse and reformat
+        try:
+            from datetime import datetime
+            for parse_fmt in ['%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M:%S.%f', '%Y-%m-%d %H:%M', '%Y-%m-%d']:
+                try:
+                    dt = datetime.strptime(value, parse_fmt)
+                    return dt.strftime(fmt)
+                except ValueError:
+                    continue
+            # If parsing fails, return original string
+            return str(value)
+        except Exception:
+            return str(value)
+    # If it's a datetime object
+    try:
+        return value.strftime(fmt)
+    except AttributeError:
+        return str(value)
+
 # Custom Jinja filter for datetime formatting (handles both string and datetime objects)
 def format_datetime(value, format='%Y-%m-%d %H:%M'):
     """Format datetime or string to specified format."""
@@ -1818,7 +1846,7 @@ def admin_activity_export_pdf():
                 r["role"] or "—",
                 r["email"] or "—",
                 r["action"] or "—",
-                r["timestamp"].strftime('%d %b %Y %H:%M') if r["timestamp"] else "—"
+                safe_format_date(r["timestamp"], '%d %b %Y %H:%M')
             ])
         
         # Summary items
@@ -1827,7 +1855,7 @@ def admin_activity_export_pdf():
         ]
         
         # Generated time
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
@@ -1951,7 +1979,7 @@ def admin_users_export_pdf():
                 r["email"] or "—",
                 r["role"] or "—",
                 "Active" if r["approved"] else "Pending",
-                r["created_at"].strftime('%d %b %Y %H:%M') if r["created_at"] else "—"
+                safe_format_date(r["created_at"], '%d %b %Y %H:%M')
             ])
         
         # Summary items
@@ -1963,7 +1991,7 @@ def admin_users_export_pdf():
         ]
         
         # Generated time
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
@@ -2337,7 +2365,7 @@ def export_pdf():
             data_rows.append([
                 r["student"] or "—",
                 r["title"] or "—",
-                r["exam_date"].strftime('%d %b %Y') if r["exam_date"] else "—",
+                safe_format_date(r["exam_date"], '%d %b %Y'),
                 r["subject"] or "—",
                 r["faculty"] or "—",
                 str(r["score"]),
@@ -2355,7 +2383,7 @@ def export_pdf():
         ]
         
         # Generated time
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
@@ -2838,7 +2866,7 @@ def admin_reports_export_csv():
         pct = round(r["score"]/r["total"]*100,1) if r["total"] else 0
         w.writerow([r["student_name"], r["exam_title"], r["faculty_name"], r["classroom_name"],
                     r["score"], r["total"], f"{pct}%", "Pass" if r["score"]>=r["total"]/2 else "Fail",
-                    r["submitted_at"].strftime('%Y-%m-%d') if r["submitted_at"] else ""])
+                    safe_format_date(r["submitted_at"], '%Y-%m-%d')])
     resp = make_response(out.getvalue())
     resp.headers["Content-Type"] = "text/csv"
     resp.headers["Content-Disposition"] = "attachment; filename=admin_reports.csv"
@@ -3838,10 +3866,15 @@ def faculty_export_pdf():
         styles = get_pdf_styles()
         elements = []
         
-        # Header with new two-column layout
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        # Header with centered title and top-right logo
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-        elements.append(create_header_table('FACULTY EXAM REPORT', generated_time, logo_path))
+        
+        # Set footer generated time
+        from pdf_utils import set_footer_generated_time
+        set_footer_generated_time(generated_time)
+        
+        elements.append(create_header_table('FACULTY EXAM REPORT', logo_path))
         
         # Summary section with new bullet list format
         summary_items = [
@@ -3865,7 +3898,7 @@ def faculty_export_pdf():
                 Paragraph(r["student_name"] or "—", styles['normal']),
                 Paragraph(r["title"] or "—", styles['normal']),
                 Paragraph(r["subject"] or "—", styles['normal']),
-                Paragraph(r["exam_date"].strftime('%d %b %Y') if r["exam_date"] else "—", styles['normal']),
+                Paragraph(safe_format_date(r["exam_date"], '%d %b %Y'), styles['normal']),
                 Paragraph(str(r["score"]), styles['normal']),
                 Paragraph(str(r["total_marks"]), styles['normal']),
                 Paragraph(f"{pct}%", styles['normal']),
@@ -5672,10 +5705,15 @@ def student_export_pdf():
         styles = get_pdf_styles()
         elements = []
         
-        # Header with new two-column layout
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        # Header with centered title and top-right logo
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-        elements.append(create_header_table('STUDENT RESULT HISTORY REPORT', generated_time, logo_path))
+        
+        # Set footer generated time
+        from pdf_utils import set_footer_generated_time
+        set_footer_generated_time(generated_time)
+        
+        elements.append(create_header_table('STUDENT RESULT HISTORY REPORT', logo_path))
         
         # Summary section with new bullet list format
         summary_items = [
@@ -5700,7 +5738,7 @@ def student_export_pdf():
                 Paragraph(r["title"] or "—", styles['normal']),
                 Paragraph(r["subject"] or "—", styles['normal']),
                 Paragraph(r["faculty_name"] or "—", styles['normal']),
-                Paragraph(r["exam_date"].strftime('%d %b %Y') if r["exam_date"] else "—", styles['normal']),
+                Paragraph(safe_format_date(r["exam_date"], '%d %b %Y'), styles['normal']),
                 Paragraph(str(r["score"]), styles['normal']),
                 Paragraph(str(r["total_marks"]), styles['normal']),
                 Paragraph(f"{pct}%", styles['normal']),
