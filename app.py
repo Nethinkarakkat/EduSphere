@@ -3775,14 +3775,7 @@ def faculty_export_csv():
 
 @app.route("/faculty/results/export/pdf")
 def faculty_export_pdf():
-    from flask import Response
-    from reportlab.platypus import Paragraph, Table
-    from reportlab.lib import colors
-    from pdf_utils import (
-        create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, create_header_table, create_summary_section
-    )
-    import os
+    from pdf_utils import build_report_pdf
     g = require_role("faculty")
     if g: return g
     try:
@@ -3851,74 +3844,46 @@ def faculty_export_pdf():
         fail_count = total_count - pass_count
         avg_pct = sum(round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0 for r in results) / total_count if total_count else 0
         
-        # Create PDF with updated styling
-        from flask import Response
-        from reportlab.platypus import Paragraph, Table
-        from pdf_utils import (
-            create_pdf_document, get_pdf_styles, get_column_widths,
-            get_table_style, create_header_table, create_summary_section
-        )
-        from reportlab.lib import colors
-        import os
+        # Prepare data for shared PDF builder
+        headers = ["Student", "Exam", "Subject", "Date", "Score", "Total", "%", "Result"]
+        rows = []
+        for r in results:
+            pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
+            result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
+            rows.append([
+                r["student_name"] or "—",
+                r["title"] or "—",
+                r["subject"] or "—",
+                safe_format_date(r["exam_date"], '%d %b %Y'),
+                str(r["score"]),
+                str(r["total_marks"]),
+                f"{pct}%",
+                result
+            ])
         
-        response = io.BytesIO()
-        doc = create_pdf_document(response)
-        styles = get_pdf_styles()
-        elements = []
-        
-        # Header with centered title and top-right logo
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
-        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-        
-        # Set footer generated time
-        from pdf_utils import set_footer_generated_time
-        set_footer_generated_time(generated_time)
-        
-        elements.append(create_header_table('FACULTY EXAM REPORT', logo_path))
-        
-        # Summary section with new bullet list format
+        # Summary items
         summary_items = [
             ["Total Records", str(total_count)],
             ["Passed", str(pass_count)],
             ["Failed", str(fail_count)],
             ["Average %", f"{avg_pct:.1f}%"],
         ]
-        summary_elements = create_summary_section(summary_items)
-        elements.extend(summary_elements)
-        elements.append(Paragraph('', styles['normal']))  # Spacer
         
-        # Data table with new styling
-        headers = ["Student", "Exam", "Subject", "Date", "Score", "Total", "%", "Result"]
-        data = [headers]
-        for r in results:
-            pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
-            result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
-            
-            data.append([
-                Paragraph(r["student_name"] or "—", styles['normal']),
-                Paragraph(r["title"] or "—", styles['normal']),
-                Paragraph(r["subject"] or "—", styles['normal']),
-                Paragraph(safe_format_date(r["exam_date"], '%d %b %Y'), styles['normal']),
-                Paragraph(str(r["score"]), styles['normal']),
-                Paragraph(str(r["total_marks"]), styles['normal']),
-                Paragraph(f"{pct}%", styles['normal']),
-                Paragraph(result, styles['normal'])
-            ])
+        # Generated time
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
-        # Get column widths and table style
-        col_widths = get_column_widths('faculty_results')
-        table_style = get_table_style(len(headers))
+        # Logo path
+        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
-        table = Table(data, colWidths=col_widths)
-        table.setStyle(table_style)
-        elements.append(table)
-        
-        doc.build(elements)
-        response.seek(0)
-        return Response(
-            response.getvalue(),
-            mimetype="application/pdf",
-            headers={"Content-Disposition": 'attachment; filename="faculty_results.pdf"'}
+        # Build PDF using shared helper
+        return build_report_pdf(
+            title="FACULTY EXAM REPORT",
+            headers=headers,
+            rows=rows,
+            generated_time=generated_time,
+            filename="faculty_results.pdf",
+            summary_items=summary_items,
+            logo_path=logo_path
         )
     except Exception as e:
         import traceback
@@ -4145,15 +4110,8 @@ def student_analytics_export_csv():
 
 @app.route("/faculty/student_analytics/export/pdf")
 def student_analytics_export_pdf():
-    from flask import Response
-    from reportlab.platypus import Paragraph, Table
-    from reportlab.lib import colors
-    from pdf_utils import (
-        create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, create_header_table, create_summary_section
-    )
+    from pdf_utils import build_report_pdf
     import os
-    import traceback
     
     g = require_role("faculty")
     if g: return g
@@ -4226,7 +4184,7 @@ def student_analytics_export_pdf():
         ]
         
         # Generated time
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
@@ -5476,13 +5434,7 @@ def faculty_analytics_export():
 
 @app.route("/faculty/analytics/export/pdf")
 def faculty_analytics_export_pdf():
-    from flask import Response
-    from reportlab.platypus import Paragraph, Table
-    from reportlab.lib import colors
-    from pdf_utils import (
-        create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, create_header_table, create_summary_section
-    )
+    from pdf_utils import build_report_pdf
     import os
     g = require_role("faculty")
     if g: return g
@@ -5524,7 +5476,7 @@ def faculty_analytics_export_pdf():
                 data_rows.append([
                     r["title"] or "—",
                     r["subject"] or "—",
-                    r["exam_date"].strftime('%d %b %Y') if r["exam_date"] else "—",
+                    safe_format_date(r["exam_date"], '%d %b %Y'),
                     str(r["attempts"] or 0),
                     str(round(avg_score,1) if avg_score else 0),
                     str(r["max_score"] or 0),
@@ -5542,7 +5494,7 @@ def faculty_analytics_export_pdf():
         ]
         
         # Generated time
-        generated_time = datetime.now().strftime('%d %b %Y %H:%M')
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
@@ -5652,14 +5604,7 @@ def student_results_export():
 
 @app.route("/student/results/export/pdf")
 def student_export_pdf():
-    from flask import Response
-    from reportlab.platypus import Paragraph, Table
-    from reportlab.lib import colors
-    from pdf_utils import (
-        create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, create_header_table, create_summary_section
-    )
-    import os
+    from pdf_utils import build_report_pdf
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
     try:
         conn = get_db(); sid = session["user_id"]
@@ -5692,30 +5637,24 @@ def student_export_pdf():
         fail_count = sum(1 for r in published_results if r["total_marks"] and not is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
         avg_pct = sum(round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0 for r in published_results) / len(published_results) if published_results else 0
         
-        # Create PDF with updated styling
-        from flask import Response
-        from reportlab.platypus import Paragraph, Table
-        from pdf_utils import (
-            create_pdf_document, get_pdf_styles, get_column_widths,
-            get_table_style, create_header_table, create_summary_section
-        )
+        # Prepare data for shared PDF builder
+        headers = ["Exam", "Subject", "Faculty", "Date", "Score", "Total", "%", "Result"]
+        rows = []
+        for r in results:
+            pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
+            result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
+            rows.append([
+                r["title"] or "—",
+                r["subject"] or "—",
+                r["faculty_name"] or "—",
+                safe_format_date(r["exam_date"], '%d %b %Y'),
+                str(r["score"]),
+                str(r["total_marks"]),
+                f"{pct}%",
+                result
+            ])
         
-        response = io.BytesIO()
-        doc = create_pdf_document(response)
-        styles = get_pdf_styles()
-        elements = []
-        
-        # Header with centered title and top-right logo
-        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
-        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
-        
-        # Set footer generated time
-        from pdf_utils import set_footer_generated_time
-        set_footer_generated_time(generated_time)
-        
-        elements.append(create_header_table('STUDENT RESULT HISTORY REPORT', logo_path))
-        
-        # Summary section with new bullet list format
+        # Summary items
         summary_items = [
             ["Total Exams", str(total_count)],
             ["Published Results", str(len(published_results))],
@@ -5724,41 +5663,22 @@ def student_export_pdf():
             ["Pending", str(pending_count)],
             ["Average %", f"{avg_pct:.1f}%"],
         ]
-        summary_elements = create_summary_section(summary_items)
-        elements.extend(summary_elements)
-        elements.append(Paragraph('', styles['normal']))  # Spacer
         
-        # Data table with new styling
-        headers = ["Exam", "Subject", "Faculty", "Date", "Score", "Total", "%", "Result"]
-        data = [headers]
-        for r in results:
-            pct = round(r["score"]/r["total_marks"]*100,1) if r["total_marks"] else 0
-            result = "Pass" if is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50) else "Fail"
-            data.append([
-                Paragraph(r["title"] or "—", styles['normal']),
-                Paragraph(r["subject"] or "—", styles['normal']),
-                Paragraph(r["faculty_name"] or "—", styles['normal']),
-                Paragraph(safe_format_date(r["exam_date"], '%d %b %Y'), styles['normal']),
-                Paragraph(str(r["score"]), styles['normal']),
-                Paragraph(str(r["total_marks"]), styles['normal']),
-                Paragraph(f"{pct}%", styles['normal']),
-                Paragraph(result, styles['normal'])
-            ])
+        # Generated time
+        generated_time = safe_format_date(datetime.now(), '%d %b %Y %H:%M')
         
-        # Get column widths and table style
-        col_widths = get_column_widths('student_results')
-        table_style = get_table_style(len(headers))
+        # Logo path
+        logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
-        table = Table(data, colWidths=col_widths)
-        table.setStyle(table_style)
-        elements.append(table)
-        
-        doc.build(elements)
-        response.seek(0)
-        return Response(
-            response.getvalue(),
-            mimetype="application/pdf",
-            headers={"Content-Disposition": f'attachment; filename="{student["name"]}_marksheet.pdf"'}
+        # Build PDF using shared helper
+        return build_report_pdf(
+            title="STUDENT RESULT HISTORY REPORT",
+            headers=headers,
+            rows=rows,
+            generated_time=generated_time,
+            filename=f'{student["name"]}_results.pdf',
+            summary_items=summary_items,
+            logo_path=logo_path
         )
     except Exception as e:
         import traceback
