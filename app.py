@@ -3734,7 +3734,7 @@ def faculty_results():
                exams.title, exams.subject,
                exams.exam_date, submissions.score, submissions.submitted_at,
                exams.id as exam_id, exams.classroom_id, exams.pass_percentage,
-               exam_totals.total_marks
+               exam_totals.total_marks as total
                FROM submissions
                JOIN users ON users.id=submissions.student_id
                JOIN exams ON exams.id=submissions.exam_id
@@ -3784,7 +3784,7 @@ def faculty_results():
     conn.close()
     
     # Correct pass/fail using is_pass helper
-    pass_count = sum(1 for r in results if r["total_marks"] and is_pass(r["score"], r["total_marks"], r["pass_percentage"] or 50))
+    pass_count = sum(1 for r in results if r["total"] and is_pass(r["score"], r["total"], r["pass_percentage"] or 50))
     fail_count = len(results) - pass_count
     
     return render_template("faculty/faculty_results.html", results=results, my_exams=my_exams,
@@ -4082,13 +4082,17 @@ def student_analytics():
         SELECT users.id as student_id, users.name as student_name,
                exams.id as exam_id, exams.title as exam_title, exams.subject,
                exams.classroom_id, classrooms.name as classroom_name,
-               submissions.score, SUM(questions.marks) as total,
+               submissions.score, submissions.submitted_at, exam_totals.total as total,
                exams.pass_percentage
         FROM submissions
         JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
         LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
-        JOIN questions ON questions.exam_id=exams.id
+        JOIN (
+            SELECT exam_id, SUM(marks) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = exams.id
         WHERE exams.faculty_id=%s
     """
     params = [fid]
@@ -4103,7 +4107,7 @@ def student_analytics():
         query += " AND exams.subject=%s"
         params.append(sel_subject)
     
-    query += " GROUP BY users.id, exams.id"
+    query += " ORDER BY exams.title, users.name"
     
     results = conn.execute(query, params).fetchall()
     
@@ -4217,13 +4221,17 @@ def student_analytics_export_csv():
         SELECT users.id as student_id, users.name as student_name,
                exams.id as exam_id, exams.title as exam_title, exams.subject,
                exams.classroom_id, classrooms.name as classroom_name,
-               submissions.score, SUM(questions.marks) as total,
+               submissions.score, submissions.submitted_at, exam_totals.total as total,
                exams.pass_percentage
         FROM submissions
         JOIN users ON users.id=submissions.student_id
         JOIN exams ON exams.id=submissions.exam_id
         LEFT JOIN classrooms ON classrooms.id=exams.classroom_id
-        JOIN questions ON questions.exam_id=exams.id
+        JOIN (
+            SELECT exam_id, SUM(marks) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = exams.id
         WHERE exams.faculty_id=%s
     """
     params = [fid]
@@ -4238,7 +4246,7 @@ def student_analytics_export_csv():
         query += " AND exams.subject=%s"
         params.append(sel_subject)
     
-    query += " GROUP BY users.id, exams.id"
+    query += " ORDER BY exams.title, users.name"
     
     results = conn.execute(query, params).fetchall()
     conn.close()
@@ -5790,16 +5798,18 @@ def student_results():
         SELECT exams.title, exams.subject, exams.exam_date, exams.faculty_id,
                submissions.score, submissions.submitted_at, exams.id as exam_id,
                submissions.result_published, exams.pass_percentage,
-               SUM(questions.marks) as total,
+               exam_totals.total as total,
                faculty.name as faculty_name
         FROM submissions
         JOIN exams ON exams.id=submissions.exam_id
-        JOIN questions ON questions.exam_id=exams.id
+        JOIN (
+            SELECT exam_id, SUM(marks) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = exams.id
         JOIN users as faculty ON faculty.id=exams.faculty_id
         WHERE submissions.student_id=%s
-        GROUP BY exams.id, exams.title, exams.subject, exams.exam_date, exams.faculty_id,
-               submissions.score, submissions.submitted_at, submissions.result_published,
-               exams.pass_percentage, faculty.name ORDER BY submissions.submitted_at DESC
+        ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
     student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
     conn.close()
@@ -5818,16 +5828,18 @@ def student_results_export():
         SELECT exams.title, exams.subject, exams.exam_date,
                submissions.score, submissions.submitted_at, exams.id as exam_id,
                submissions.result_published, exams.pass_percentage,
-               SUM(questions.marks) as total,
+               exam_totals.total as total,
                faculty.name as faculty_name
         FROM submissions
         JOIN exams ON exams.id=submissions.exam_id
-        JOIN questions ON questions.exam_id=exams.id
+        JOIN (
+            SELECT exam_id, SUM(marks) as total
+            FROM questions
+            GROUP BY exam_id
+        ) exam_totals ON exam_totals.exam_id = exams.id
         JOIN users as faculty ON faculty.id=exams.faculty_id
         WHERE submissions.student_id=%s
-        GROUP BY exams.id, exams.title, exams.subject, exams.exam_date,
-               submissions.score, submissions.submitted_at, submissions.result_published,
-               exams.pass_percentage, faculty.name ORDER BY submissions.submitted_at DESC
+        ORDER BY submissions.submitted_at DESC
     """, (sid,)).fetchall()
     student = conn.execute("SELECT * FROM users WHERE id=%s", (sid,)).fetchone()
     conn.close()
