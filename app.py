@@ -3752,8 +3752,7 @@ def faculty_export_pdf():
     from reportlab.lib import colors
     from pdf_utils import (
         create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, format_datetime, create_header_table,
-        create_summary_table, apply_column_alignment
+        get_table_style, create_header_table, create_summary_section
     )
     import os
     g = require_role("faculty")
@@ -4118,8 +4117,7 @@ def student_analytics_export_pdf():
     from reportlab.lib import colors
     from pdf_utils import (
         create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, format_datetime, create_header_table,
-        create_summary_table, apply_column_alignment
+        get_table_style, create_header_table, create_summary_section
     )
     import os
     import traceback
@@ -5450,8 +5448,7 @@ def faculty_analytics_export_pdf():
     from reportlab.lib import colors
     from pdf_utils import (
         create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, format_datetime, create_header_table,
-        create_summary_table, apply_column_alignment
+        get_table_style, create_header_table, create_summary_section
     )
     import os
     g = require_role("faculty")
@@ -5627,8 +5624,7 @@ def student_export_pdf():
     from reportlab.lib import colors
     from pdf_utils import (
         create_pdf_document, get_pdf_styles, get_column_widths,
-        get_table_style, format_datetime, create_header_table,
-        create_summary_table, apply_column_alignment
+        get_table_style, create_header_table, create_summary_section
     )
     import os
     if "user_id" not in session or session.get("role") != "student": return redirect("/")
