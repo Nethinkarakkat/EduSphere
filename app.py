@@ -1812,7 +1812,7 @@ def admin_activity_export_csv():
 
 @app.route("/admin/activity/export/pdf")
 def admin_activity_export_pdf():
-    from pdf_utils import build_generic_report
+    from pdf_utils import build_premium_report
     import os
     g = require_role("admin")
     if g: return g
@@ -1858,7 +1858,7 @@ def admin_activity_export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        return build_generic_report(
+        return build_premium_report(
             title="ACTIVITY LOG REPORT",
             summary=summary,
             headers=headers,
@@ -1943,7 +1943,7 @@ def admin_users_export_csv():
 
 @app.route("/admin/users/export/pdf")
 def admin_users_export_pdf():
-    from pdf_utils import build_generic_report
+    from pdf_utils import build_premium_report
     import os
     g = require_role("admin")
     if g: return g
@@ -1988,7 +1988,7 @@ def admin_users_export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        return build_generic_report(
+        return build_premium_report(
             title="USERS REPORT",
             summary=summary,
             headers=headers,
@@ -2375,8 +2375,8 @@ def export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_generic_report
-        return build_generic_report(
+        from pdf_utils import build_premium_report
+        return build_premium_report(
             title="EXAM REPORT",
             summary=summary,
             headers=headers,
@@ -3856,8 +3856,8 @@ def faculty_export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_generic_report
-        return build_generic_report(
+        from pdf_utils import build_premium_report
+        return build_premium_report(
             title="FACULTY EXAM REPORT",
             summary=summary,
             headers=headers,
@@ -4166,8 +4166,8 @@ def student_analytics_export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_generic_report
-        return build_generic_report(
+        from pdf_utils import build_premium_report
+        return build_premium_report(
             title="STUDENT ANALYTICS REPORT",
             summary=summary,
             headers=headers,
@@ -5470,8 +5470,8 @@ def faculty_analytics_export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_generic_report
-        return build_generic_report(
+        from pdf_utils import build_premium_report
+        return build_premium_report(
             title="FACULTY ANALYTICS REPORT",
             summary=summary,
             headers=headers,
@@ -5635,8 +5635,8 @@ def student_export_pdf():
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
         # Build PDF using shared helper
-        from pdf_utils import build_generic_report
-        return build_generic_report(
+        from pdf_utils import build_premium_report
+        return build_premium_report(
             title="STUDENT RESULT HISTORY REPORT",
             summary=summary,
             headers=headers,
