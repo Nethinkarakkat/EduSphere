@@ -15,6 +15,19 @@ import os
 # Global variables for footer
 _footer_generated_time = None
 _footer_title = None
+_page_number_callback = None
+
+
+class PageNumberCallback:
+    """Helper class to track page numbers for 'Page X of Y' footer."""
+    def __init__(self):
+        self.page_count = 0
+    
+    def increment(self):
+        self.page_count += 1
+    
+    def get_total(self):
+        return self.page_count
 
 
 def set_footer_metadata(title, time_str):
@@ -29,21 +42,20 @@ def add_page_footer(canvas, doc):
     global _footer_title, _footer_generated_time
     canvas.saveState()
     canvas.setFont('Helvetica', 8)
-    canvas.setFillColor(colors.grey)
+    canvas.setFillColor(colors.HexColor('#777777'))
     
     pagesize = doc.pagesize
     width = pagesize[0]
     
     # Draw separator line
-    canvas.setStrokeColor(colors.lightgrey)
-    canvas.setLineWidth(0.5)
+    canvas.setStrokeColor(colors.HexColor('#DDDDDD'))
+    canvas.setLineWidth(0.8)
     canvas.line(35, 25, width - 35, 25)
     
     # Draw footer text
     page_num = canvas.getPageNumber()
-    generated_time_str = _footer_generated_time if _footer_generated_time else datetime.now().strftime('%d %b %Y %H:%M')
     
-    canvas.setFillColor(colors.grey)
+    # Centered text
     canvas.drawCentredString(
         width / 2,
         18,
@@ -52,7 +64,32 @@ def add_page_footer(canvas, doc):
     canvas.drawCentredString(
         width / 2,
         10,
-        f"Page {page_num} | Generated on: {generated_time_str}"
+        "This report is electronically generated and does not require a signature."
+    )
+    
+    # Bottom left - Generated On
+    generated_date = datetime.now().strftime('%d %b %Y')
+    generated_time = datetime.now().strftime('%I:%M %p')
+    canvas.setFont('Helvetica', 8)
+    canvas.setFillColor(colors.HexColor('#777777'))
+    canvas.drawString(
+        35,
+        18,
+        f"Generated On: {generated_date}"
+    )
+    canvas.drawString(
+        35,
+        10,
+        f"{generated_time}"
+    )
+    
+    # Bottom right - Page X of Y (using doc.page for current, will need two-pass for total)
+    canvas.setFont('Helvetica', 8)
+    canvas.setFillColor(colors.HexColor('#777777'))
+    canvas.drawRightString(
+        width - 35,
+        14,
+        f"Page {page_num}"
     )
     
     canvas.restoreState()
@@ -64,10 +101,10 @@ def get_styles():
     
     # Title style - centered, large bold
     title_style = styles['Normal'].clone('title')
-    title_style.fontSize = 28
+    title_style.fontSize = 27
     title_style.fontName = 'Helvetica-Bold'
     title_style.textColor = colors.black
-    title_style.leading = 34
+    title_style.leading = 33
     title_style.alignment = 1  # Center
     
     # Section header style
@@ -76,27 +113,27 @@ def get_styles():
     section_style.fontName = 'Helvetica-Bold'
     section_style.textColor = colors.black
     section_style.leading = 22
-    section_style.spaceBefore = 16
-    section_style.spaceAfter = 12
+    section_style.spaceBefore = 20
+    section_style.spaceAfter = 14
     
     # Normal body text style
     normal_style = styles['Normal'].clone('normal')
-    normal_style.fontSize = 10
-    normal_style.leading = 12
+    normal_style.fontSize = 10.5
+    normal_style.leading = 13
     normal_style.textColor = colors.HexColor('#333333')
     normal_style.wordWrap = 'CJK'
     normal_style.splitLongWords = True
     
     # Summary label style (bold)
     summary_label_style = styles['Normal'].clone('summary_label')
-    summary_label_style.fontSize = 10
+    summary_label_style.fontSize = 11
     summary_label_style.fontName = 'Helvetica-Bold'
     summary_label_style.textColor = colors.black
     summary_label_style.leading = 14
     
     # Summary value style (regular)
     summary_value_style = styles['Normal'].clone('summary_value')
-    summary_value_style.fontSize = 10
+    summary_value_style.fontSize = 11
     summary_value_style.fontName = 'Helvetica'
     summary_value_style.textColor = colors.black
     summary_value_style.leading = 14
@@ -105,7 +142,7 @@ def get_styles():
     header_brand_style = styles['Normal'].clone('header_brand')
     header_brand_style.fontSize = 12
     header_brand_style.fontName = 'Helvetica-Bold'
-    header_brand_style.textColor = colors.HexColor('#4F46E5')
+    header_brand_style.textColor = colors.HexColor('#4338CA')
     header_brand_style.leading = 14
     header_brand_style.alignment = 1  # Center
     
@@ -121,7 +158,7 @@ def get_styles():
     footer_style = styles['Normal'].clone('footer')
     footer_style.fontSize = 9
     footer_style.fontName = 'Helvetica'
-    footer_style.textColor = colors.grey
+    footer_style.textColor = colors.HexColor('#777777')
     footer_style.leading = 12
     footer_style.alignment = 1  # Center
     
@@ -189,7 +226,7 @@ def create_report_header(title, logo_path, doc_width):
         ('RIGHTPADDING', (0, 0), (-1, -1), 0),
         ('TOPPADDING', (0, 0), (-1, -1), 0),
         ('BOTTOMPADDING', (0, 0), (-1, -1), 25),
-        ('LINEBELOW', (0, -1), (-1, -1), 0.5, colors.lightgrey),
+        ('LINEBELOW', (0, -1), (-1, -1), 0.8, colors.HexColor('#DDDDDD')),
     ]))
     
     return header_table
@@ -255,7 +292,7 @@ def create_summary_section(summary, doc_width):
         elements.append(row_table)
     
     # Spacer before table
-    elements.append(Spacer(1, 12))
+    elements.append(Spacer(1, 18))
     
     return elements
 
@@ -339,16 +376,16 @@ def create_standard_table(headers, rows, doc_width):
     table_data = [wrapped_headers] + wrapped_rows
     
     # Create table
-    table = Table(table_data, colWidths=col_widths)
+    table = Table(table_data, colWidths=col_widths, repeatRows=1)
     
     # Build table style with zebra rows
     table_style = TableStyle([
         # Header styling - purple background, white bold text
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4F46E5')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#4338CA')),
         ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
         ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
         ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0, 0), (-1, 0), 11),
+        ('FONTSIZE', (0, 0), (-1, 0), 12),
         ('VALIGN', (0, 0), (-1, 0), 'MIDDLE'),
         ('LEFTPADDING', (0, 0), (-1, 0), 10),
         ('RIGHTPADDING', (0, 0), (-1, 0), 10),
@@ -362,8 +399,8 @@ def create_standard_table(headers, rows, doc_width):
         ('BOTTOMPADDING', (0, 1), (-1, -1), 12),
         ('VALIGN', (0, 1), (-1, -1), 'MIDDLE'),
         ('MINROWHEIGHT', (0, 1), (-1, -1), 28),
-        ('GRID', (0, 0), (-1, -1), 0.5, colors.lightgrey),
-        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.lightgrey]),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#DDDDDD')),
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#F8F9FA')]),
     ])
     
     # Apply per-column alignment for body rows
@@ -386,7 +423,7 @@ def create_footer():
     styles = get_styles()
     elements = []
     
-    elements.append(Spacer(1, 20))
+    elements.append(Spacer(1, 30))
     elements.append(Paragraph('Generated by EduSphere Examination System', styles['footer']))
     elements.append(Paragraph('This report is electronically generated and does not require a signature.', styles['footer']))
     
@@ -442,7 +479,7 @@ def build_premium_report(title, summary, headers, rows, filename, logo_path=None
         pagesize=pagesize,
         leftMargin=35,
         rightMargin=35,
-        topMargin=50,
+        topMargin=30,
         bottomMargin=40,
         onFirstPage=add_page_footer,
         onLaterPages=add_page_footer
@@ -459,6 +496,7 @@ def build_premium_report(title, summary, headers, rows, filename, logo_path=None
     
     # ===== HEADER =====
     elements.append(create_report_header(title, logo_path, doc_width))
+    elements.append(Spacer(1, 15))
     
     # ===== SUMMARY =====
     if summary:
@@ -466,9 +504,6 @@ def build_premium_report(title, summary, headers, rows, filename, logo_path=None
     
     # ===== TABLE =====
     elements.append(create_standard_table(headers, rows, doc_width))
-    
-    # ===== FOOTER =====
-    elements.extend(create_footer())
     
     # Build PDF
     doc.build(elements)
