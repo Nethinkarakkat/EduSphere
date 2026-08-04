@@ -2,30 +2,23 @@ from flask import Flask, render_template, request, redirect, session, flash, mak
 import sqlite3, os, csv, io, random, string
 from datetime import datetime, timedelta
 from dotenv import load_dotenv
+from werkzeug.security import generate_password_hash, check_password_hash
 from fpdf import FPDF
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
 # Load .env file immediately before any other operations
 env_path = os.path.join(os.path.dirname(__file__), '.env')
-print(f"[STARTUP] Loading .env from: {env_path}")
-print(f"[STARTUP] .env file exists: {os.path.exists(env_path)}")
 
-# Read .env file and set DATABASE_URL directly
+# Read .env file and set DATABASE_URL directly (handles UTF-8 BOM)
 if os.path.exists(env_path):
-    with open(env_path, 'r') as f:
-        content = f.read()
-        print(f"[STARTUP] .env file content (first 200 chars): {content[:200]}")
-        
-        # Parse DATABASE_URL manually
-        for line in content.split('\n'):
-            if '=' in line and 'DATABASE_URL' in line:
-                key, value = line.split('=', 1)
-                if key.strip() == 'DATABASE_URL':
-                    db_url = value.strip()
-                    os.environ['DATABASE_URL'] = db_url
-                    print(f"[STARTUP] DATABASE_URL set: {db_url[:50]}...")
-                    break
+    with open(env_path, 'r', encoding='utf-8-sig') as f:
+        for line in f:
+            stripped = line.strip()
+            if stripped.startswith('DATABASE_URL='):
+                db_url = stripped.split('=', 1)[1].strip()
+                os.environ['DATABASE_URL'] = db_url
+                break
 
 # Load .env with dotenv as well
 load_dotenv(env_path, override=True)
