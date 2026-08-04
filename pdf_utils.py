@@ -205,9 +205,10 @@ def create_report_header(title, logo_path, doc_width):
         # Logo 40-50% larger (2.1cm instead of 1.5cm)
         logo = Image(logo_path, width=2.1*cm, height=2.1*cm)
         right_content = [
+            logo,
+            Spacer(1, 4),
             Paragraph('EduSphere', styles['header_brand']),
-            Paragraph('Examination System', styles['header_subtitle']),
-            logo
+            Paragraph('Examination System', styles['header_subtitle'])
         ]
     else:
         right_content = [
@@ -261,8 +262,8 @@ def create_summary_section(summary, doc_width):
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('ALIGN', (1, 0), (1, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ('GRID', (0, 0), (-1, -1), 0, colors.white),
@@ -283,8 +284,8 @@ def create_summary_section(summary, doc_width):
             ('ALIGN', (0, 0), (0, -1), 'LEFT'),
             ('ALIGN', (1, 0), (1, -1), 'LEFT'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-            ('LEFTPADDING', (0, 0), (-1, -1), 0),
-            ('RIGHTPADDING', (0, 0), (-1, -1), 0),
+            ('LEFTPADDING', (0, 0), (-1, -1), 10),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 10),
             ('TOPPADDING', (0, 0), (-1, -1), 2),
             ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
             ('GRID', (0, 0), (-1, -1), 0, colors.white),
