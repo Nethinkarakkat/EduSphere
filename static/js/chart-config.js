@@ -28,13 +28,33 @@ const CHART_COLORS = {
 // Chart instance registry for cleanup
 const chartInstances = {};
 
+// Separate theme configurations for clarity
+const LIGHT_THEME = {
+    legendColor: '#475569',
+    axisColor: '#64748B',
+    gridColor: 'rgba(148,163,184,0.18)',
+    tooltipBg: '#FFFFFF',
+    tooltipText: '#111827',
+    tooltipBorder: '#E5E7EB'
+};
+
+const DARK_THEME = {
+    legendColor: 'rgba(255,255,255,0.90)',
+    axisColor: 'rgba(255,255,255,0.82)',
+    tickColor: 'rgba(255,255,255,0.72)',
+    gridColor: 'rgba(255,255,255,0.10)',
+    tooltipBg: '#1f2937',
+    tooltipText: '#FFFFFF',
+    tooltipBorder: '#374151'
+};
+
 /**
  * Get theme-aware chart configuration
  * @param {string} theme - Current theme ('light' or 'dark')
  * @returns {object} Chart.js options object
  */
 function getChartOptions(theme = 'light') {
-    const isDark = theme === 'dark';
+    const themeConfig = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
     
     return {
         responsive: true,
@@ -51,7 +71,7 @@ function getChartOptions(theme = 'light') {
                 display: true,
                 position: 'bottom',
                 labels: {
-                    color: isDark ? 'rgba(255,255,255,0.90)' : '#475569',
+                    color: themeConfig.legendColor,
                     font: {
                         size: 13,
                         weight: '500',
@@ -63,10 +83,10 @@ function getChartOptions(theme = 'light') {
                 }
             },
             tooltip: {
-                backgroundColor: isDark ? '#1f2937' : '#FFFFFF',
-                titleColor: isDark ? '#FFFFFF' : '#111827',
-                bodyColor: isDark ? '#FFFFFF' : '#111827',
-                borderColor: isDark ? '#374151' : '#E5E7EB',
+                backgroundColor: themeConfig.tooltipBg,
+                titleColor: themeConfig.tooltipText,
+                bodyColor: themeConfig.tooltipText,
+                borderColor: themeConfig.tooltipBorder,
                 borderWidth: 1,
                 cornerRadius: 8,
                 padding: 12,
@@ -89,7 +109,7 @@ function getChartOptions(theme = 'light') {
                     display: false
                 },
                 ticks: {
-                    color: isDark ? 'rgba(255,255,255,0.82)' : '#64748B',
+                    color: themeConfig.axisColor,
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
@@ -105,11 +125,11 @@ function getChartOptions(theme = 'light') {
             },
             y: {
                 grid: {
-                    color: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.18)',
+                    color: themeConfig.gridColor,
                     drawBorder: false
                 },
                 ticks: {
-                    color: isDark ? 'rgba(255,255,255,0.72)' : '#64748B',
+                    color: theme === 'dark' ? themeConfig.tickColor : themeConfig.axisColor,
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
