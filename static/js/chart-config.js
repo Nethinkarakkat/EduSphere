@@ -40,9 +40,9 @@ const LIGHT_THEME = {
 
 const DARK_THEME = {
     legendColor: '#FFFFFF',
-    axisColor: 'rgba(255,255,255,0.82)',
-    tickColor: 'rgba(255,255,255,0.72)',
-    gridColor: 'rgba(255,255,255,0.10)',
+    axisColor: 'rgba(255,255,255,0.92)',
+    tickColor: 'rgba(255,255,255,0.82)',
+    gridColor: 'rgba(255,255,255,0.12)',
     tooltipBg: '#1f2937',
     tooltipText: '#FFFFFF',
     tooltipBorder: '#374151'
@@ -109,8 +109,11 @@ function getChartOptions(theme = 'light') {
         },
         scales: {
             x: {
+                display: true,
                 grid: {
-                    display: false
+                    display: true,
+                    color: themeConfig.gridColor,
+                    drawBorder: false
                 },
                 ticks: {
                     color: themeConfig.axisColor,
@@ -128,6 +131,7 @@ function getChartOptions(theme = 'light') {
                 }
             },
             y: {
+                display: true,
                 grid: {
                     color: themeConfig.gridColor,
                     drawBorder: false
