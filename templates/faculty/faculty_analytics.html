@@ -214,7 +214,17 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  // Get current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  
+  // Ensure Chart.js defaults are set for the current theme
+  if (currentTheme === 'dark') {
+    Chart.defaults.color = 'rgba(255,255,255,0.82)';
+    Chart.defaults.plugins.legend.labels.color = '#FFFFFF';
+  } else {
+    Chart.defaults.color = '#64748B';
+    Chart.defaults.plugins.legend.labels.color = '#475569';
+  }
   
   // Bar chart — avg % per exam
   const examLabels = [{% for e in exam_stats %}"{{ e.title[:20] }}",{% endfor %}];
@@ -222,7 +232,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const examColors = examAvg.map(v => v>=50 ? window.ChartConfig.colors.successDark : window.ChartConfig.colors.dangerDark);
 
   if (examLabels.length) {
-    window.ChartConfig.createBar('examChart', {
+    const chart = window.ChartConfig.createBar('examChart', {
       labels: examLabels,
       datasets: [{
         label: 'Avg %',
@@ -231,6 +241,7 @@ document.addEventListener('DOMContentLoaded', function() {
         borderRadius: 6
       }]
     }, currentTheme);
+    if (chart) chart.update();
   } else {
     window.ChartConfig.showEmpty('examChart', 'No exam data available');
   }
@@ -243,7 +254,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   window.ChartConfig.colors.infoDark];
 
   if (cLabels.length) {
-    window.ChartConfig.createDoughnut('classroomChart', {
+    const chart = window.ChartConfig.createDoughnut('classroomChart', {
       labels: cLabels,
       datasets: [{
         data: cData,
@@ -251,6 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
         borderWidth: 0
       }]
     }, currentTheme);
+    if (chart) chart.update();
   } else {
     window.ChartConfig.showEmpty('classroomChart', 'No classroom data available');
   }
