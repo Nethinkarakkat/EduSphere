@@ -214,11 +214,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // Get current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-  
-  console.log('Faculty Analytics - Current Theme:', currentTheme);
-  console.log('Faculty Analytics - ChartConfig available:', !!window.ChartConfig);
   
   // Bar chart — avg % per exam
   const examLabels = [{% for e in exam_stats %}"{{ e.title[:20] }}",{% endfor %}];
@@ -226,8 +222,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const examColors = examAvg.map(v => v>=50 ? window.ChartConfig.colors.successDark : window.ChartConfig.colors.dangerDark);
 
   if (examLabels.length) {
-    console.log('Creating examChart with theme:', currentTheme);
-    const chart = window.ChartConfig.createBar('examChart', {
+    window.ChartConfig.createBar('examChart', {
       labels: examLabels,
       datasets: [{
         label: 'Avg %',
@@ -236,18 +231,6 @@ document.addEventListener('DOMContentLoaded', function() {
         borderRadius: 6
       }]
     }, currentTheme);
-    
-    if (chart) {
-      console.log('examChart created successfully');
-      console.log('examChart options.plugins.legend.labels.color:', chart.options.plugins.legend.labels.color);
-      console.log('examChart options.scales.x.ticks.color:', chart.options.scales.x.ticks.color);
-      console.log('examChart options.scales.y.ticks.color:', chart.options.scales.y.ticks.color);
-      console.log('examChart options.scales.x.display:', chart.options.scales.x.display);
-      console.log('examChart options.scales.y.display:', chart.options.scales.y.display);
-      console.log('Chart.defaults.color:', Chart.defaults.color);
-      console.log('Chart.defaults.plugins.legend.labels.color:', Chart.defaults.plugins.legend.labels.color);
-      chart.update();
-    }
   } else {
     window.ChartConfig.showEmpty('examChart', 'No exam data available');
   }
@@ -260,8 +243,7 @@ document.addEventListener('DOMContentLoaded', function() {
                   window.ChartConfig.colors.infoDark];
 
   if (cLabels.length) {
-    console.log('Creating classroomChart with theme:', currentTheme);
-    const chart = window.ChartConfig.createDoughnut('classroomChart', {
+    window.ChartConfig.createDoughnut('classroomChart', {
       labels: cLabels,
       datasets: [{
         data: cData,
@@ -269,13 +251,6 @@ document.addEventListener('DOMContentLoaded', function() {
         borderWidth: 0
       }]
     }, currentTheme);
-    
-    if (chart) {
-      console.log('classroomChart created successfully');
-      console.log('classroomChart options.plugins.legend.labels.color:', chart.options.plugins.legend.labels.color);
-      console.log('Chart.defaults.plugins.legend.labels.color:', Chart.defaults.plugins.legend.labels.color);
-      chart.update();
-    }
   } else {
     window.ChartConfig.showEmpty('classroomChart', 'No classroom data available');
   }

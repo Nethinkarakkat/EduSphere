@@ -173,17 +173,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // Get current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-  
-  // Ensure Chart.js defaults are set for the current theme
-  if (currentTheme === 'dark') {
-    Chart.defaults.color = 'rgba(255,255,255,0.82)';
-    Chart.defaults.plugins.legend.labels.color = '#FFFFFF';
-  } else {
-    Chart.defaults.color = '#64748B';
-    Chart.defaults.plugins.legend.labels.color = '#475569';
-  }
   
   // Faculty performance bar chart
   const fLabels = [{% for f in faculty_stats %}"{{ f.faculty_name }}",{% endfor %}];
@@ -191,7 +181,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const fColors = fData.map(v => v>=50 ? window.ChartConfig.colors.successDark : window.ChartConfig.colors.dangerDark);
   
   if (fLabels.length) {
-    const chart = window.ChartConfig.createBar('facultyChart', {
+    window.ChartConfig.createBar('facultyChart', {
       labels: fLabels,
       datasets: [{
         label: 'Avg %',
@@ -200,7 +190,6 @@ document.addEventListener('DOMContentLoaded', function() {
         borderRadius: 6
       }]
     }, currentTheme);
-    if (chart) chart.update();
   } else {
     window.ChartConfig.showEmpty('facultyChart', 'No faculty data available');
   }
@@ -211,7 +200,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const fails   = allData.length - passes;
   
   if (allData.length) {
-    const chart = window.ChartConfig.createDoughnut('passFailChart', {
+    window.ChartConfig.createDoughnut('passFailChart', {
       labels: ['Pass', 'Fail'],
       datasets: [{
         data: [passes, fails],
@@ -219,7 +208,6 @@ document.addEventListener('DOMContentLoaded', function() {
         borderWidth: 0
       }]
     }, currentTheme);
-    if (chart) chart.update();
   } else {
     window.ChartConfig.showEmpty('passFailChart', 'No result data available');
   }

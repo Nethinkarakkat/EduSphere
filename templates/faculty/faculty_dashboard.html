@@ -310,17 +310,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-  // Get current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
-  
-  // Ensure Chart.js defaults are set for the current theme
-  if (currentTheme === 'dark') {
-    Chart.defaults.color = 'rgba(255,255,255,0.82)';
-    Chart.defaults.plugins.legend.labels.color = '#FFFFFF';
-  } else {
-    Chart.defaults.color = '#64748B';
-    Chart.defaults.plugins.legend.labels.color = '#475569';
-  }
   
   // Exam Results Overview Chart
   const chartData = {{ exam_chart_data | tojson | default('[]', true) }};
@@ -331,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const labels = chartData.map(item => item.title);
     const passRates = chartData.map(item => item.pass_rate);
 
-    const chart = window.ChartConfig.createBar('examResultsChart', {
+    window.ChartConfig.createBar('examResultsChart', {
       labels: labels,
       datasets: [{
         label: 'Pass Rate (%)',
@@ -342,11 +332,6 @@ document.addEventListener('DOMContentLoaded', function() {
         borderRadius: 6
       }]
     }, currentTheme);
-    
-    // Force chart update to ensure colors are applied
-    if (chart) {
-      chart.update();
-    }
   } else {
     if (ctx) ctx.style.display = 'none';
     if (noChartData) noChartData.style.display = 'flex';
