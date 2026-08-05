@@ -39,7 +39,7 @@ const LIGHT_THEME = {
 };
 
 const DARK_THEME = {
-    legendColor: 'rgba(255,255,255,0.90)',
+    legendColor: '#E5E7EB',
     axisColor: 'rgba(255,255,255,0.82)',
     tickColor: 'rgba(255,255,255,0.72)',
     gridColor: 'rgba(255,255,255,0.10)',

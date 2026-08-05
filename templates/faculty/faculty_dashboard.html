@@ -321,7 +321,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const labels = chartData.map(item => item.title);
     const passRates = chartData.map(item => item.pass_rate);
 
-    window.ChartConfig.createBar('examResultsChart', {
+    const chart = window.ChartConfig.createBar('examResultsChart', {
       labels: labels,
       datasets: [{
         label: 'Pass Rate (%)',
@@ -332,6 +332,11 @@ document.addEventListener('DOMContentLoaded', function() {
         borderRadius: 6
       }]
     }, currentTheme);
+    
+    // Force theme update to ensure colors are applied
+    if (chart) {
+      chart.update();
+    }
   } else {
     if (ctx) ctx.style.display = 'none';
     if (noChartData) noChartData.style.display = 'flex';
