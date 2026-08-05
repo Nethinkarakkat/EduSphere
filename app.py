@@ -69,6 +69,31 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-fallback-key")
 app.permanent_session_lifetime = __import__("datetime").timedelta(minutes=30)
 
+# ── Security Headers for Authenticated Routes ─────────────────────────────
+# Prevent browser caching for authenticated pages to protect against
+# back-button access after logout
+@app.after_request
+def add_security_headers(response):
+    """
+    Add cache-control headers to prevent browser caching of authenticated pages.
+    Static assets and public pages are excluded.
+    """
+    # Skip cache headers for static assets
+    if request.path.startswith('/static'):
+        return response
+    
+    # Skip cache headers for public pages (login, signup, etc.)
+    public_paths = ['/', '/login', '/signup', '/forgot_password', '/reset_password']
+    if request.path in public_paths:
+        return response
+    
+    # Add cache-control headers for all authenticated routes
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
+
 # Safe date formatting helper for Python code (not Jinja templates)
 def safe_format_date(value, fmt='%d %b %Y %H:%M'):
     """
@@ -1426,9 +1451,20 @@ def signup():
 
 @app.route("/logout")
 def logout():
-    if session.get("user_id"): log_activity(session["user_id"], "Logged out")
+    """Logout route - destroys session completely and redirects to login."""
+    if session.get("user_id"): 
+        log_activity(session["user_id"], "Logged out")
+    
+    # Clear all session data
     session.clear()
-    return redirect("/")
+    
+    # Create response with cache-control headers to prevent back-button access
+    response = make_response(redirect("/"))
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    
+    return response
 
 # ── Theme Toggle ───────────────────────────────────────────────────────────────
 @app.route("/toggle_theme", methods=["POST"])
