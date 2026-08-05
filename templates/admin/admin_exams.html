@@ -10,7 +10,7 @@
 <!-- Filters -->
 <div class="card mb-5">
   <div class="card-body">
-    <form method="GET" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+    <form method="GET" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
       <div style="min-width:130px;">
         <div class="form-label">Status</div>
         <select name="status" class="form-control">
@@ -27,8 +27,10 @@
           {% for f in faculty_list %}<option value="{{ f.id }}" {% if sel_faculty==f.id|string %}selected{% endif %}>{{ f.name }}</option>{% endfor %}
         </select>
       </div>
-      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search"></i> Filter</button>
-      {% if status_f or sel_faculty %}<a href="/admin/exams" class="btn btn-ghost btn-sm"><i class="bi bi-x"></i> Clear</a>{% endif %}
+      <div style="margin-top:22px;">
+        <button type="submit" class="btn btn-primary"><i class="bi bi-search"></i> Filter</button>
+        {% if status_f or sel_faculty %}<a href="/admin/exams" class="btn btn-ghost"><i class="bi bi-x"></i> Clear</a>{% endif %}
+      </div>
     </form>
   </div>
 </div>

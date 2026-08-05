@@ -130,7 +130,13 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
     // Auto-calculate bar thickness based on data count
     let barThickness, maxBarThickness, categoryPercentage, barPercentage;
     
-    if (dataCount <= 2) {
+    if (dataCount === 1) {
+        // Single bar - make it wider
+        barThickness = 80;
+        maxBarThickness = 100;
+        categoryPercentage = 0.5;
+        barPercentage = 0.6;
+    } else if (dataCount <= 2) {
         barThickness = 60;
         maxBarThickness = 80;
         categoryPercentage = 0.6;
