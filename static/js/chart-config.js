@@ -51,7 +51,7 @@ function getChartOptions(theme = 'light') {
                 display: true,
                 position: 'bottom',
                 labels: {
-                    color: isDark ? 'rgba(255,255,255,0.92)' : 'rgba(0,0,0,0.82)',
+                    color: isDark ? 'rgba(255,255,255,0.90)' : '#475569',
                     font: {
                         size: 13,
                         weight: '500',
@@ -89,7 +89,7 @@ function getChartOptions(theme = 'light') {
                     display: false
                 },
                 ticks: {
-                    color: isDark ? 'rgba(255,255,255,0.82)' : 'rgba(0,0,0,0.65)',
+                    color: isDark ? 'rgba(255,255,255,0.82)' : '#64748B',
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
@@ -105,11 +105,11 @@ function getChartOptions(theme = 'light') {
             },
             y: {
                 grid: {
-                    color: isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)',
+                    color: isDark ? 'rgba(255,255,255,0.10)' : 'rgba(148,163,184,0.18)',
                     drawBorder: false
                 },
                 ticks: {
-                    color: isDark ? 'rgba(255,255,255,0.75)' : 'rgba(0,0,0,0.65)',
+                    color: isDark ? 'rgba(255,255,255,0.72)' : '#64748B',
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
