@@ -56,10 +56,6 @@ const DARK_THEME = {
 function getChartOptions(theme = 'light') {
     const themeConfig = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
     
-    // Set global Chart.js defaults for this theme
-    Chart.defaults.color = themeConfig.axisColor;
-    Chart.defaults.plugins.legend.labels.color = themeConfig.legendColor;
-    
     return {
         responsive: true,
         maintainAspectRatio: false,
@@ -201,7 +197,7 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
                 maxBarThickness: maxBarThickness,
                 categoryPercentage: categoryPercentage,
                 barPercentage: barPercentage,
-                borderRadius: 8,
+                borderRadius: 6,
                 borderSkipped: false
             }
         }
