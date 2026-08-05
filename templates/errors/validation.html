@@ -96,13 +96,13 @@
           </td>
 
           <!-- Question -->
-          <td style="max-width:300px;font-size:13.5px;">{{ q.question }}</td>
+          <td style="max-width:300px;font-size:13.5px;white-space:pre-wrap;">{{ q.question }}</td>
 
           <!-- Student answer -->
           <td>
             {% if student_ans %}
               <span style="font-size:13px;color:{% if is_correct %}var(--success){% else %}var(--danger){% endif %};
-                           font-weight:500;">
+                           font-weight:500;white-space:pre-wrap;">
                 {{ student_ans }}
               </span>
             {% else %}
@@ -112,7 +112,7 @@
 
           <!-- Correct answer -->
           <td>
-            <span style="font-size:13px;color:var(--success);font-weight:600;">
+            <span style="font-size:13px;color:var(--success);font-weight:600;white-space:pre-wrap;">
               {{ q.correct_answer }}
             </span>
           </td>

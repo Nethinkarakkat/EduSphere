@@ -50,19 +50,19 @@
 {% for q in questions %}
 <div class="q-card">
   <div class="q-num">{{ loop.index }}</div>
-  <p class="q-text">{{ q.question }}</p>
+  <p class="q-text" style="white-space:pre-wrap;">{{ q.question }}</p>
   {% if q.difficulty %}
   <span class="badge {% if q.difficulty=='easy' %}bdg-success{% elif q.difficulty=='hard' %}bdg-danger{% else %}bdg-warning{% endif %}" style="margin-bottom:12px;display:inline-flex;">
     {{ q.difficulty|capitalize }}
   </span>
   {% endif %}
   {% for opt in [q.option1, q.option2, q.option3, q.option4] %}
-  <div class="opt" style="cursor:default;">
+  <div class="opt" style="cursor:default;white-space:pre-wrap;">
     <span style="width:20px;height:20px;border-radius:50%;border:2px solid var(--border);display:inline-flex;flex-shrink:0;"></span>
     <span>{{ opt }}</span>
   </div>
   {% endfor %}
-  <div class="correct-answer-bar">
+  <div class="correct-answer-bar" style="white-space:pre-wrap;">
     <i class="bi bi-check-circle-fill"></i> Answer: <strong>{{ q.correct_answer }}</strong>
   </div>
 </div>

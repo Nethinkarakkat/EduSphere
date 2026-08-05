@@ -31,14 +31,14 @@
         {% for q in questions %}
         <tr>
           <td class="text-muted">{{ loop.index }}</td>
-          <td style="max-width:260px;">{{ q.question }}</td>
-          <td style="font-size:12px;color:var(--text-muted);line-height:1.8;">
+          <td style="max-width:260px;white-space:pre-wrap;">{{ q.question }}</td>
+          <td style="font-size:12px;color:var(--text-muted);line-height:1.8;white-space:pre-wrap;">
             A. {{ q.option1 }}<br>
             B. {{ q.option2 }}<br>
             C. {{ q.option3 }}<br>
             D. {{ q.option4 }}
           </td>
-          <td><span class="correct-answer"><span class="correct-answer-label">Answer:</span><span class="correct-answer-text">{{ q.correct_answer }}</span></span></td>
+          <td><span class="correct-answer" style="white-space:pre-wrap;"><span class="correct-answer-label">Answer:</span><span class="correct-answer-text">{{ q.correct_answer }}</span></span></td>
           <td>
             <a href="/delete_question/{{ q.id }}/{{ q.exam_id }}" class="btn btn-danger btn-sm"
                onclick="return confirm('Delete this question?')">

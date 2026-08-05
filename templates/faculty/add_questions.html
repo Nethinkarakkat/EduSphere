@@ -108,7 +108,7 @@
             {% for q in questions_list %}
             <tr>
               <td class="text-muted">{{ loop.index }}</td>
-              <td style="max-width:220px;">{{ q.question }}</td>
+              <td style="max-width:220px;white-space:pre-wrap;">{{ q.question }}</td>
               <td><span class="badge bdg-success" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;">{{ q.correct_answer }}</span></td>
               <td><span class="badge bdg-primary">{{ q.marks or 1 }}</span></td>
               <td>
