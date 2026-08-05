@@ -45,9 +45,10 @@ function getChartOptions(theme = 'light') {
                 display: true,
                 position: 'bottom',
                 labels: {
-                    color: isDark ? '#E5E7EB' : '#374151',
+                    color: isDark ? 'rgba(255,255,255,0.95)' : '#374151',
                     font: {
                         size: 12,
+                        weight: '500',
                         family: "'Inter', system-ui, sans-serif"
                     },
                     padding: 20,
@@ -56,10 +57,10 @@ function getChartOptions(theme = 'light') {
                 }
             },
             tooltip: {
-                backgroundColor: isDark ? 'rgba(17, 24, 39, 0.95)' : 'rgba(255, 255, 255, 0.95)',
-                titleColor: isDark ? '#F9FAFB' : '#111827',
-                bodyColor: isDark ? '#E5E7EB' : '#374151',
-                borderColor: isDark ? 'rgba(75, 85, 99, 0.3)' : 'rgba(209, 213, 219, 0.5)',
+                backgroundColor: isDark ? '#1E293B' : 'rgba(255, 255, 255, 0.95)',
+                titleColor: isDark ? '#FFFFFF' : '#111827',
+                bodyColor: isDark ? '#FFFFFF' : '#374151',
+                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(209, 213, 219, 0.5)',
                 borderWidth: 1,
                 cornerRadius: 8,
                 padding: 12,
@@ -82,7 +83,7 @@ function getChartOptions(theme = 'light') {
                     display: false
                 },
                 ticks: {
-                    color: isDark ? '#9CA3AF' : '#6B7280',
+                    color: isDark ? 'rgba(255,255,255,0.75)' : '#4B5563',
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
@@ -98,11 +99,11 @@ function getChartOptions(theme = 'light') {
             },
             y: {
                 grid: {
-                    color: isDark ? 'rgba(75, 85, 99, 0.2)' : 'rgba(229, 231, 235, 0.8)',
+                    color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(229, 231, 235, 0.8)',
                     drawBorder: false
                 },
                 ticks: {
-                    color: isDark ? '#9CA3AF' : '#6B7280',
+                    color: isDark ? 'rgba(255,255,255,0.75)' : '#4B5563',
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"

@@ -246,7 +246,7 @@ body {
 }
 .classroom-code-label {
   font-size: 10px;
-  color: var(--primary);
+  color: rgba(255,255,255,0.8);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -255,21 +255,18 @@ body {
   font-size: 20px;
   font-weight: 800;
   letter-spacing: 0.12em;
-  color: var(--white);
+  color: #FFFFFF !important;
 }
 
 /* Dark mode classroom code card */
 [data-theme="dark"] .classroom-code-card {
   background: var(--primary-dark);
 }
-[data-theme="dark"] .classroom-code-label {
-  color: var(--primary-light);
-}
 [data-theme="dark"] .classroom-code-value {
   font-size: 34px;
   font-weight: 700;
   letter-spacing: 6px;
-  color: var(--white);
+  color: #FFFFFF !important;
 }
 [data-theme="dark"] .classroom-code-card button {
   background: var(--primary);
