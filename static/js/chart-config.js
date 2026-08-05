@@ -39,7 +39,7 @@ const LIGHT_THEME = {
 };
 
 const DARK_THEME = {
-    legendColor: '#E5E7EB',
+    legendColor: '#FFFFFF',
     axisColor: 'rgba(255,255,255,0.82)',
     tickColor: 'rgba(255,255,255,0.72)',
     gridColor: 'rgba(255,255,255,0.10)',
@@ -55,6 +55,10 @@ const DARK_THEME = {
  */
 function getChartOptions(theme = 'light') {
     const themeConfig = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
+    
+    // Set global Chart.js defaults for this theme
+    Chart.defaults.color = themeConfig.axisColor;
+    Chart.defaults.plugins.legend.labels.color = themeConfig.legendColor;
     
     return {
         responsive: true,

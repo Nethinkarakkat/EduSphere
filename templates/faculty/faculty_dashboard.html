@@ -310,7 +310,17 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+  // Get current theme
   const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  
+  // Ensure Chart.js defaults are set for the current theme
+  if (currentTheme === 'dark') {
+    Chart.defaults.color = 'rgba(255,255,255,0.82)';
+    Chart.defaults.plugins.legend.labels.color = '#FFFFFF';
+  } else {
+    Chart.defaults.color = '#64748B';
+    Chart.defaults.plugins.legend.labels.color = '#475569';
+  }
   
   // Exam Results Overview Chart
   const chartData = {{ exam_chart_data | tojson | default('[]', true) }};
@@ -333,7 +343,7 @@ document.addEventListener('DOMContentLoaded', function() {
       }]
     }, currentTheme);
     
-    // Force theme update to ensure colors are applied
+    // Force chart update to ensure colors are applied
     if (chart) {
       chart.update();
     }
