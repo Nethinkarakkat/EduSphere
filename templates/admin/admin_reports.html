@@ -2,9 +2,6 @@
 {% block title %}Reports — EduSphere{% endblock %}
 {% block page_title %}Reports & Analytics{% endblock %}
 {% block page_sub %}Platform-wide performance overview{% endblock %}
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-{% endblock %}
 {% block topbar_actions %}
   <a href="/admin/reports/export/csv" class="btn btn-success btn-sm"><i class="bi bi-download"></i> Export CSV</a>
 {% endblock %}
@@ -161,29 +158,46 @@
 {% endif %}
 
 <script>
-// Faculty performance bar
-const fLabels = [{% for f in faculty_stats %}"{{ f.faculty_name }}",{% endfor %}];
-const fData   = [{% for f in faculty_stats %}{{ f.avg_pct|round(1) if f.avg_pct else 0 }},{% endfor %}];
-const fColors = fData.map(v => v>=50 ? 'rgba(16,185,129,.75)' : 'rgba(239,68,68,.75)');
-if (fLabels.length) {
-  new Chart(document.getElementById('facultyChart'), {
-    type:'bar', data:{ labels:fLabels,
-      datasets:[{ label:'Avg %', data:fData, backgroundColor:fColors, borderRadius:5 }]},
-    options:{ responsive:true, plugins:{legend:{display:false}},
-      scales:{ y:{beginAtZero:true,max:100,grid:{color:'#f1f5f9'}}, x:{grid:{display:false}} }}
-  });
-}
-// Pass/Fail doughnut
-const allData = [{% for r in data %}{ score:{{ r.score }}, total:{{ r.total }} },{% endfor %}];
-const passes  = allData.filter(r => r.score >= r.total/2).length;
-const fails   = allData.length - passes;
-if (allData.length) {
-  new Chart(document.getElementById('passFailChart'), {
-    type:'doughnut', data:{ labels:['Pass','Fail'],
-      datasets:[{ data:[passes,fails], backgroundColor:['rgba(16,185,129,.8)','rgba(239,68,68,.8)'], borderWidth:0 }]},
-    options:{ plugins:{legend:{position:'bottom'}}, cutout:'65%' }
-  });
-}
+document.addEventListener('DOMContentLoaded', function() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  
+  // Faculty performance bar chart
+  const fLabels = [{% for f in faculty_stats %}"{{ f.faculty_name }}",{% endfor %}];
+  const fData   = [{% for f in faculty_stats %}{{ f.avg_pct|round(1) if f.avg_pct else 0 }},{% endfor %}];
+  const fColors = fData.map(v => v>=50 ? window.ChartConfig.colors.successDark : window.ChartConfig.colors.dangerDark);
+  
+  if (fLabels.length) {
+    window.ChartConfig.createBar('facultyChart', {
+      labels: fLabels,
+      datasets: [{
+        label: 'Avg %',
+        data: fData,
+        backgroundColor: fColors,
+        borderRadius: 6
+      }]
+    }, currentTheme);
+  } else {
+    window.ChartConfig.showEmpty('facultyChart', 'No faculty data available');
+  }
+  
+  // Pass/Fail doughnut chart
+  const allData = [{% for r in data %}{ score:{{ r.score }}, total:{{ r.total }} },{% endfor %}];
+  const passes  = allData.filter(r => r.score >= r.total/2).length;
+  const fails   = allData.length - passes;
+  
+  if (allData.length) {
+    window.ChartConfig.createDoughnut('passFailChart', {
+      labels: ['Pass', 'Fail'],
+      datasets: [{
+        data: [passes, fails],
+        backgroundColor: [window.ChartConfig.colors.successDark, window.ChartConfig.colors.dangerDark],
+        borderWidth: 0
+      }]
+    }, currentTheme);
+  } else {
+    window.ChartConfig.showEmpty('passFailChart', 'No result data available');
+  }
+});
 </script>
 
 {% endblock %}

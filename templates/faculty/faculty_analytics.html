@@ -2,9 +2,6 @@
 {% block title %}Analytics — EduSphere{% endblock %}
 {% block page_title %}My Analytics{% endblock %}
 {% block page_sub %}Performance insights across your exams{% endblock %}
-{% block head %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-{% endblock %}
 {% block topbar_actions %}
   {% set query_params = request.args.copy() %}
   <a href="/faculty/analytics/export?{{ query_params|urlencode }}" class="btn btn-success btn-sm">
@@ -216,32 +213,48 @@
 </div>
 
 <script>
-// Bar chart — avg % per exam
-const examLabels = [{% for e in exam_stats %}"{{ e.title[:20] }}",{% endfor %}];
-const examAvg    = [{% for e in exam_stats %}{{ ((e.avg_score/e.total_q)*100)|round(1) if e.total_q and e.avg_score else 0 }},{% endfor %}];
-const examColors = examAvg.map(v => v>=50 ? 'rgba(16,185,129,.75)' : 'rgba(239,68,68,.75)');
+document.addEventListener('DOMContentLoaded', function() {
+  const currentTheme = document.documentElement.getAttribute('data-theme') || 'light';
+  
+  // Bar chart — avg % per exam
+  const examLabels = [{% for e in exam_stats %}"{{ e.title[:20] }}",{% endfor %}];
+  const examAvg    = [{% for e in exam_stats %}{{ ((e.avg_score/e.total_q)*100)|round(1) if e.total_q and e.avg_score else 0 }},{% endfor %}];
+  const examColors = examAvg.map(v => v>=50 ? window.ChartConfig.colors.successDark : window.ChartConfig.colors.dangerDark);
 
-if (examLabels.length) {
-  new Chart(document.getElementById('examChart'), {
-    type:'bar', data:{ labels:examLabels,
-      datasets:[{ label:'Avg %', data:examAvg, backgroundColor:examColors, borderRadius:5 }]},
-    options:{ responsive:true, plugins:{legend:{display:false}},
-      scales:{ y:{beginAtZero:true,max:100,grid:{color:'#f1f5f9'}}, x:{grid:{display:false}} }}
-  });
-}
+  if (examLabels.length) {
+    window.ChartConfig.createBar('examChart', {
+      labels: examLabels,
+      datasets: [{
+        label: 'Avg %',
+        data: examAvg,
+        backgroundColor: examColors,
+        borderRadius: 6
+      }]
+    }, currentTheme);
+  } else {
+    window.ChartConfig.showEmpty('examChart', 'No exam data available');
+  }
 
-// Doughnut — classroom avg
-const cLabels = [{% for c in classroom_stats %}"{{ c.classroom_name }}",{% endfor %}];
-const cData   = [{% for c in classroom_stats %}{{ c.avg_pct|round(1) if c.avg_pct else 0 }},{% endfor %}];
-const cColors = ['rgba(79,70,229,.8)','rgba(16,185,129,.8)','rgba(245,158,11,.8)','rgba(239,68,68,.8)','rgba(14,165,233,.8)'];
+  // Doughnut — classroom avg
+  const cLabels = [{% for c in classroom_stats %}"{{ c.classroom_name }}",{% endfor %}];
+  const cData   = [{% for c in classroom_stats %}{{ c.avg_pct|round(1) if c.avg_pct else 0 }},{% endfor %}];
+  const cColors = [window.ChartConfig.colors.primaryDark, window.ChartConfig.colors.successDark, 
+                  window.ChartConfig.colors.warningDark, window.ChartConfig.colors.dangerDark, 
+                  window.ChartConfig.colors.infoDark];
 
-if (cLabels.length) {
-  new Chart(document.getElementById('classroomChart'), {
-    type:'doughnut', data:{ labels:cLabels,
-      datasets:[{ data:cData, backgroundColor:cColors.slice(0,cLabels.length), borderWidth:2 }]},
-    options:{ plugins:{legend:{position:'bottom'}}, cutout:'60%' }
-  });
-}
+  if (cLabels.length) {
+    window.ChartConfig.createDoughnut('classroomChart', {
+      labels: cLabels,
+      datasets: [{
+        data: cData,
+        backgroundColor: cColors.slice(0, cLabels.length),
+        borderWidth: 0
+      }]
+    }, currentTheme);
+  } else {
+    window.ChartConfig.showEmpty('classroomChart', 'No classroom data available');
+  }
+});
 </script>
 
 {% endblock %}
