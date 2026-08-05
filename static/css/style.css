@@ -236,7 +236,7 @@ body {
 
 /* Classroom Code Card */
 .classroom-code-card {
-  background: var(--primary-light);
+  background: linear-gradient(135deg, #4F46E5 0%, #6366F1 100%);
   border-radius: var(--radius-sm);
   padding: 16px 20px;
   margin-bottom: 14px;
@@ -246,7 +246,7 @@ body {
 }
 .classroom-code-label {
   font-size: 10px;
-  color: rgba(255,255,255,0.8);
+  color: rgba(255,255,255,0.85);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -256,6 +256,15 @@ body {
   font-weight: 800;
   letter-spacing: 0.12em;
   color: #FFFFFF !important;
+}
+.classroom-code-card button {
+  background: rgba(255,255,255,0.2);
+  color: #FFFFFF;
+  border: 1px solid rgba(255,255,255,0.3);
+}
+.classroom-code-card button:hover {
+  background: rgba(255,255,255,0.3);
+  color: #FFFFFF;
 }
 
 /* Dark mode classroom code card */
@@ -271,6 +280,7 @@ body {
 [data-theme="dark"] .classroom-code-card button {
   background: var(--primary);
   color: var(--white);
+  border: none;
 }
 [data-theme="dark"] .classroom-code-card button:hover {
   background: var(--primary-light);

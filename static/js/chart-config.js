@@ -3,11 +3,11 @@
  * Reusable theme configuration for all charts across the application
  */
 
-// Application colors
+// Application colors - Standardized palette
 const CHART_COLORS = {
-    primary: '#5B5FEF',
-    primaryLight: 'rgba(91, 95, 239, 0.2)',
-    primaryDark: 'rgba(91, 95, 239, 0.8)',
+    primary: '#6366F1',
+    primaryLight: 'rgba(99, 102, 241, 0.2)',
+    primaryDark: 'rgba(99, 102, 241, 0.8)',
     success: '#10B981',
     successLight: 'rgba(16, 185, 129, 0.2)',
     successDark: 'rgba(16, 185, 129, 0.8)',
@@ -19,7 +19,10 @@ const CHART_COLORS = {
     warningDark: 'rgba(245, 158, 11, 0.8)',
     info: '#3B82F6',
     infoLight: 'rgba(59, 130, 246, 0.2)',
-    infoDark: 'rgba(59, 130, 246, 0.8)'
+    infoDark: 'rgba(59, 130, 246, 0.8)',
+    purple: '#8B5CF6',
+    purpleLight: 'rgba(139, 92, 246, 0.2)',
+    purpleDark: 'rgba(139, 92, 246, 0.8)'
 };
 
 // Chart instance registry for cleanup
@@ -36,8 +39,11 @@ function getChartOptions(theme = 'light') {
     return {
         responsive: true,
         maintainAspectRatio: false,
+        layout: {
+            padding: 20
+        },
         animation: {
-            duration: 700,
+            duration: 800,
             easing: 'easeInOutQuart'
         },
         plugins: {
@@ -45,9 +51,9 @@ function getChartOptions(theme = 'light') {
                 display: true,
                 position: 'bottom',
                 labels: {
-                    color: isDark ? 'rgba(255,255,255,0.95)' : '#374151',
+                    color: isDark ? 'rgba(255,255,255,0.95)' : 'rgba(0,0,0,0.82)',
                     font: {
-                        size: 12,
+                        size: 13,
                         weight: '500',
                         family: "'Inter', system-ui, sans-serif"
                     },
@@ -57,10 +63,10 @@ function getChartOptions(theme = 'light') {
                 }
             },
             tooltip: {
-                backgroundColor: isDark ? '#1E293B' : 'rgba(255, 255, 255, 0.95)',
+                backgroundColor: isDark ? '#1f2937' : '#FFFFFF',
                 titleColor: isDark ? '#FFFFFF' : '#111827',
-                bodyColor: isDark ? '#FFFFFF' : '#374151',
-                borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(209, 213, 219, 0.5)',
+                bodyColor: isDark ? '#FFFFFF' : '#111827',
+                borderColor: isDark ? '#374151' : '#E5E7EB',
                 borderWidth: 1,
                 cornerRadius: 8,
                 padding: 12,
@@ -83,7 +89,7 @@ function getChartOptions(theme = 'light') {
                     display: false
                 },
                 ticks: {
-                    color: isDark ? 'rgba(255,255,255,0.75)' : '#4B5563',
+                    color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)',
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
@@ -99,11 +105,11 @@ function getChartOptions(theme = 'light') {
             },
             y: {
                 grid: {
-                    color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(229, 231, 235, 0.8)',
+                    color: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
                     drawBorder: false
                 },
                 ticks: {
-                    color: isDark ? 'rgba(255,255,255,0.75)' : '#4B5563',
+                    color: isDark ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.65)',
                     font: {
                         size: 11,
                         family: "'Inter', system-ui, sans-serif"
@@ -134,12 +140,12 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
     if (dataCount === 1) {
         // Single bar - make it wider
         barThickness = 80;
-        maxBarThickness = 100;
+        maxBarThickness = 60;
         categoryPercentage = 0.5;
         barPercentage = 0.6;
     } else if (dataCount <= 2) {
         barThickness = 60;
-        maxBarThickness = 80;
+        maxBarThickness = 60;
         categoryPercentage = 0.6;
         barPercentage = 0.7;
     } else if (dataCount <= 5) {
@@ -149,12 +155,12 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
         barPercentage = 0.8;
     } else if (dataCount <= 10) {
         barThickness = 40;
-        maxBarThickness = 50;
+        maxBarThickness = 60;
         categoryPercentage = 0.8;
         barPercentage = 0.85;
     } else {
         barThickness = 30;
-        maxBarThickness = 40;
+        maxBarThickness = 60;
         categoryPercentage = 0.85;
         barPercentage = 0.9;
     }
@@ -167,7 +173,7 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
                 maxBarThickness: maxBarThickness,
                 categoryPercentage: categoryPercentage,
                 barPercentage: barPercentage,
-                borderRadius: 6,
+                borderRadius: 8,
                 borderSkipped: false
             }
         }
@@ -301,8 +307,8 @@ function createLineChart(canvasId, data, theme = 'light') {
             ...options,
             elements: {
                 line: {
-                    tension: 0.4,
-                    borderWidth: 2
+                    tension: 0.3,
+                    borderWidth: 3
                 },
                 point: {
                     radius: 4,
