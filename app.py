@@ -1900,6 +1900,19 @@ def admin_activity_export_pdf():
             ["Total Records", str(len(logs))],
         ]
         
+        # Build a human-readable list of the filters actually applied, so
+        # the PDF can show "Filters Applied: Role: Admin | From Date: ..."
+        # Only filters with a real value are included.
+        applied_filters = []
+        if role_filter:
+            applied_filters.append(["Role", role_filter.capitalize()])
+        if from_date:
+            applied_filters.append(["From Date", safe_format_date(from_date, '%d %b %Y')])
+        if to_date:
+            applied_filters.append(["To Date", safe_format_date(to_date, '%d %b %Y')])
+        if search_query:
+            applied_filters.append(["Search", search_query])
+        
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
@@ -1910,7 +1923,8 @@ def admin_activity_export_pdf():
             headers=headers,
             rows=rows,
             filename="activity_log.pdf",
-            logo_path=logo_path if os.path.exists(logo_path) else None
+            logo_path=logo_path if os.path.exists(logo_path) else None,
+            filters=applied_filters
         )
     except Exception as e:
         app.logger.exception("PDF export failed")
@@ -2030,6 +2044,15 @@ def admin_users_export_pdf():
             ["Pending Users", str(len(users) - active_count)],
         ]
         
+        # Build a human-readable list of the filters actually applied
+        applied_filters = []
+        if q:
+            applied_filters.append(["Search", q])
+        if role_f:
+            applied_filters.append(["Role", role_f.capitalize()])
+        if status_f:
+            applied_filters.append(["Status", "Active" if status_f == "active" else "Pending"])
+        
         # Logo path
         logo_path = os.path.join(os.path.dirname(__file__), 'static', 'images', 'logo.png')
         
@@ -2040,7 +2063,8 @@ def admin_users_export_pdf():
             headers=headers,
             rows=rows,
             filename="users.pdf",
-            logo_path=logo_path if os.path.exists(logo_path) else None
+            logo_path=logo_path if os.path.exists(logo_path) else None,
+            filters=applied_filters
         )
     except Exception as e:
         app.logger.exception("PDF export failed")
@@ -2383,9 +2407,27 @@ def export_pdf():
         if filters: query += " WHERE " + " AND ".join(filters)
         query += " ORDER BY submissions.submitted_at DESC"
         data = conn.execute(query, params).fetchall()
-        conn.close()
         
-        # Calculate summary stats
+        # Look up human-readable names for the ID-based filters (student,
+        # exam, faculty) so the PDF can show real names, not raw IDs
+        applied_filters = []
+        if sf:
+            r = conn.execute("SELECT name FROM users WHERE id=%s", (sf,)).fetchone()
+            applied_filters.append(["Student", r["name"] if r else sf])
+        if ef:
+            r = conn.execute("SELECT title FROM exams WHERE id=%s", (ef,)).fetchone()
+            applied_filters.append(["Exam", r["title"] if r else ef])
+        if ff:
+            r = conn.execute("SELECT name FROM users WHERE id=%s", (ff,)).fetchone()
+            applied_filters.append(["Faculty", r["name"] if r else ff])
+        if df:
+            applied_filters.append(["From Date", safe_format_date(df, '%d %b %Y')])
+        if dt:
+            applied_filters.append(["To Date", safe_format_date(dt, '%d %b %Y')])
+        if sq:
+            applied_filters.append(["Search", sq])
+        
+        conn.close()
         total_count = len(data)
         pass_count = sum(1 for r in data if r["total"] and r["score"] >= r["total"]/2)
         fail_count = total_count - pass_count
@@ -2428,7 +2470,8 @@ def export_pdf():
             headers=headers,
             rows=data_rows,
             filename="edusphere_report.pdf",
-            logo_path=logo_path if os.path.exists(logo_path) else None
+            logo_path=logo_path if os.path.exists(logo_path) else None,
+            filters=applied_filters
         )
     except Exception as e:
         app.logger.exception("PDF generation error (reports)")
@@ -3865,6 +3908,28 @@ def faculty_export_pdf():
             query += " ORDER BY exams.title, users.name"
         
         results = conn.execute(query, params).fetchall()
+        
+        # Look up human-readable names/labels for the applied filters
+        applied_filters = []
+        if sel_subject:
+            applied_filters.append(["Subject", sel_subject])
+        if sel_classroom:
+            r = conn.execute("SELECT name FROM classrooms WHERE id=%s", (sel_classroom,)).fetchone()
+            applied_filters.append(["Classroom", r["name"] if r else sel_classroom])
+        if sel_exam:
+            r = conn.execute("SELECT title FROM exams WHERE id=%s", (sel_exam,)).fetchone()
+            applied_filters.append(["Exam", r["title"] if r else sel_exam])
+        if sel_date:
+            applied_filters.append(["Date", safe_format_date(sel_date, '%d %b %Y')])
+        if sel_date_from:
+            applied_filters.append(["From Date", safe_format_date(sel_date_from, '%d %b %Y')])
+        if sel_date_to:
+            applied_filters.append(["To Date", safe_format_date(sel_date_to, '%d %b %Y')])
+        if sel_result:
+            applied_filters.append(["Result", "Pass" if sel_result == "pass" else "Fail"])
+        if sel_search:
+            applied_filters.append(["Search", sel_search])
+        
         conn.close()
         
         # Calculate summary stats
@@ -3909,7 +3974,8 @@ def faculty_export_pdf():
             headers=headers,
             rows=rows,
             filename="faculty_results.pdf",
-            logo_path=logo_path
+            logo_path=logo_path,
+            filters=applied_filters
         )
     except Exception as e:
         import traceback
@@ -4183,6 +4249,18 @@ def student_analytics_export_pdf():
         query += " ORDER BY exams.title, users.name"
         
         results = conn.execute(query, params).fetchall()
+        
+        # Look up human-readable names for the applied filters
+        applied_filters = []
+        if sel_classroom:
+            r = conn.execute("SELECT name FROM classrooms WHERE id=%s", (sel_classroom,)).fetchone()
+            applied_filters.append(["Classroom", r["name"] if r else sel_classroom])
+        if sel_exam:
+            r = conn.execute("SELECT title FROM exams WHERE id=%s", (sel_exam,)).fetchone()
+            applied_filters.append(["Exam", r["title"] if r else sel_exam])
+        if sel_subject:
+            applied_filters.append(["Subject", sel_subject])
+        
         conn.close()
         
         # Prepare data for shared PDF builder
@@ -4219,7 +4297,8 @@ def student_analytics_export_pdf():
             headers=headers,
             rows=data_rows,
             filename="student_analytics.pdf",
-            logo_path=logo_path if os.path.exists(logo_path) else None
+            logo_path=logo_path if os.path.exists(logo_path) else None,
+            filters=applied_filters
         )
     except Exception as e:
         import traceback
@@ -5481,6 +5560,18 @@ def faculty_analytics_export_pdf():
         if sf: query += " AND exams.subject=%s"; params.append(sf)
         query += " GROUP BY exams.id, exams.title, exams.subject, exams.exam_date ORDER BY exams.exam_date DESC"
         rows = conn.execute(query, params).fetchall()
+        
+        # Look up human-readable names for the applied filters
+        applied_filters = []
+        if ef:
+            r = conn.execute("SELECT title FROM exams WHERE id=%s", (ef,)).fetchone()
+            applied_filters.append(["Exam", r["title"] if r else ef])
+        if cf:
+            r = conn.execute("SELECT name FROM classrooms WHERE id=%s", (cf,)).fetchone()
+            applied_filters.append(["Classroom", r["name"] if r else cf])
+        if sf:
+            applied_filters.append(["Subject", sf])
+        
         conn.close()
         total_attempts = sum(r["attempts"] or 0 for r in rows)
 
@@ -5523,7 +5614,8 @@ def faculty_analytics_export_pdf():
             headers=headers,
             rows=data_rows,
             filename="faculty_analytics.pdf",
-            logo_path=logo_path if os.path.exists(logo_path) else None
+            logo_path=logo_path if os.path.exists(logo_path) else None,
+            filters=applied_filters
         )
     except Exception as e:
         import traceback

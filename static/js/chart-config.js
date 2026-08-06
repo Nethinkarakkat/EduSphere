@@ -1,9 +1,15 @@
 /**
  * EduSphere Chart.js Configuration
- * Reusable theme configuration for all charts across the application
+ * ONE centralized, standardized theme configuration shared by every chart
+ * in the app: Admin → Reports, Faculty → Analytics, Faculty Dashboard.
+ *
+ * No page/template should define its own chart colors, fonts, legend
+ * position, grid styling, tooltip styling, padding, border radius, bar
+ * thickness, doughnut cutout, or animation. Everything comes from here.
  */
 
-// Application colors - Standardized palette
+// Application colors - Standardized palette (dataset fill colors; unrelated
+// to text/label theming below)
 const CHART_COLORS = {
     primary: '#6366F1',
     primaryLight: 'rgba(99, 102, 241, 0.2)',
@@ -25,23 +31,45 @@ const CHART_COLORS = {
     purpleDark: 'rgba(139, 92, 246, 0.8)'
 };
 
-// Chart instance registry for cleanup
+// Chart instance registry for cleanup + live theme refresh
 const chartInstances = {};
 
-// Separate theme configurations for clarity
+// Shared font family/weights - identical across every chart, every element
+const CHART_FONT_FAMILY = "'Inter', system-ui, sans-serif";
+const CHART_FONT_WEIGHT_REGULAR = '500';
+const CHART_FONT_WEIGHT_BOLD = '600';
+
+/**
+ * LIGHT MODE
+ * Titles:            #0F172A
+ * Legend Labels:      #475569
+ * Axis Labels:        #475569
+ * Axis Tick Labels:   #64748B
+ * Grid:               rgba(148,163,184,0.18)
+ */
 const LIGHT_THEME = {
+    titleColor: '#0F172A',
     legendColor: '#475569',
-    axisColor: '#64748B',
+    axisLabelColor: '#475569',
+    axisTickColor: '#64748B',
     gridColor: 'rgba(148,163,184,0.18)',
     tooltipBg: '#FFFFFF',
     tooltipText: '#111827',
     tooltipBorder: '#E5E7EB'
 };
 
+/**
+ * DARK MODE - unchanged design, only ensuring labels are legible/white.
+ * Legend labels:  #FFFFFF
+ * Axis labels:    rgba(255,255,255,0.92)
+ * Tick labels:    rgba(255,255,255,0.82)
+ * Grid:           rgba(255,255,255,0.12)
+ */
 const DARK_THEME = {
+    titleColor: '#FFFFFF',
     legendColor: '#FFFFFF',
-    axisColor: 'rgba(255,255,255,0.92)',
-    tickColor: 'rgba(255,255,255,0.82)',
+    axisLabelColor: 'rgba(255,255,255,0.92)',
+    axisTickColor: 'rgba(255,255,255,0.82)',
     gridColor: 'rgba(255,255,255,0.12)',
     tooltipBg: '#1f2937',
     tooltipText: '#FFFFFF',
@@ -49,13 +77,17 @@ const DARK_THEME = {
 };
 
 /**
- * Get theme-aware chart configuration
+ * Get theme-aware chart configuration. This is the single source of truth
+ * for title, legend, axis, tick, grid, and tooltip styling - every chart
+ * in the app must be created through createBarChart/createDoughnutChart
+ * (or getChartOptions directly) rather than defining its own options.
+ *
  * @param {string} theme - Current theme ('light' or 'dark')
  * @returns {object} Chart.js options object
  */
 function getChartOptions(theme = 'light') {
     const themeConfig = theme === 'dark' ? DARK_THEME : LIGHT_THEME;
-    
+
     return {
         responsive: true,
         maintainAspectRatio: false,
@@ -66,7 +98,24 @@ function getChartOptions(theme = 'light') {
             duration: 800,
             easing: 'easeInOutQuart'
         },
+        // Chart.js falls back to this root color for any element that
+        // doesn't have an explicit color set - keeping it theme-correct
+        // is a safety net on top of the explicit colors below.
+        color: themeConfig.legendColor,
         plugins: {
+            // Off by default (current charts use an HTML <h5> above the
+            // canvas for titles, so this doesn't change layout) but fully
+            // themed so any chart that turns it on inherits the same look.
+            title: {
+                display: false,
+                color: themeConfig.titleColor,
+                font: {
+                    size: 15,
+                    weight: CHART_FONT_WEIGHT_BOLD,
+                    family: CHART_FONT_FAMILY
+                },
+                padding: { bottom: 16 }
+            },
             legend: {
                 display: true,
                 position: 'bottom',
@@ -74,8 +123,8 @@ function getChartOptions(theme = 'light') {
                     color: themeConfig.legendColor,
                     font: {
                         size: 13,
-                        weight: '500',
-                        family: "'Inter', system-ui, sans-serif"
+                        weight: CHART_FONT_WEIGHT_REGULAR,
+                        family: CHART_FONT_FAMILY
                     },
                     padding: 20,
                     usePointStyle: true,
@@ -92,12 +141,12 @@ function getChartOptions(theme = 'light') {
                 padding: 12,
                 titleFont: {
                     size: 13,
-                    weight: '600',
-                    family: "'Inter', system-ui, sans-serif"
+                    weight: CHART_FONT_WEIGHT_BOLD,
+                    family: CHART_FONT_FAMILY
                 },
                 bodyFont: {
                     size: 12,
-                    family: "'Inter', system-ui, sans-serif"
+                    family: CHART_FONT_FAMILY
                 },
                 displayColors: true,
                 boxPadding: 4
@@ -106,16 +155,25 @@ function getChartOptions(theme = 'light') {
         scales: {
             x: {
                 display: true,
+                title: {
+                    display: false,
+                    color: themeConfig.axisLabelColor,
+                    font: {
+                        size: 12,
+                        weight: CHART_FONT_WEIGHT_REGULAR,
+                        family: CHART_FONT_FAMILY
+                    }
+                },
                 grid: {
                     display: true,
                     color: themeConfig.gridColor,
                     drawBorder: false
                 },
                 ticks: {
-                    color: themeConfig.axisColor,
+                    color: themeConfig.axisTickColor,
                     font: {
                         size: 11,
-                        family: "'Inter', system-ui, sans-serif"
+                        family: CHART_FONT_FAMILY
                     },
                     maxRotation: 0,
                     minRotation: 0,
@@ -128,15 +186,24 @@ function getChartOptions(theme = 'light') {
             },
             y: {
                 display: true,
+                title: {
+                    display: false,
+                    color: themeConfig.axisLabelColor,
+                    font: {
+                        size: 12,
+                        weight: CHART_FONT_WEIGHT_REGULAR,
+                        family: CHART_FONT_FAMILY
+                    }
+                },
                 grid: {
                     color: themeConfig.gridColor,
                     drawBorder: false
                 },
                 ticks: {
-                    color: theme === 'dark' ? themeConfig.tickColor : themeConfig.axisColor,
+                    color: themeConfig.axisTickColor,
                     font: {
                         size: 11,
-                        family: "'Inter', system-ui, sans-serif"
+                        family: CHART_FONT_FAMILY
                     },
                     padding: 10
                 },
@@ -157,12 +224,12 @@ function getChartOptions(theme = 'light') {
  */
 function getBarChartOptions(dataCount = 1, theme = 'light') {
     const baseOptions = getChartOptions(theme);
-    
-    // Auto-calculate bar thickness based on data count
+
+    // Auto-calculate bar thickness based on data count (unchanged - do not
+    // modify bar width/spacing behavior)
     let barThickness, maxBarThickness, categoryPercentage, barPercentage;
-    
+
     if (dataCount === 1) {
-        // Single bar - make it wider
         barThickness = 80;
         maxBarThickness = 60;
         categoryPercentage = 0.5;
@@ -188,7 +255,7 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
         categoryPercentage = 0.85;
         barPercentage = 0.9;
     }
-    
+
     return {
         ...baseOptions,
         datasets: {
@@ -211,10 +278,10 @@ function getBarChartOptions(dataCount = 1, theme = 'light') {
  */
 function getDoughnutChartOptions(theme = 'light') {
     const baseOptions = getChartOptions(theme);
-    
+
     return {
         ...baseOptions,
-        cutout: '65%',
+        cutout: '65%', // unchanged
         plugins: {
             ...baseOptions.plugins,
             legend: {
@@ -254,20 +321,20 @@ function createBarChart(canvasId, data, theme = 'light') {
         console.error(`Canvas element with ID '${canvasId}' not found`);
         return null;
     }
-    
-    // Destroy existing chart instance
+
     if (chartInstances[canvasId]) {
         chartInstances[canvasId].destroy();
     }
-    
+
     const options = getBarChartOptions(data.labels?.length || 1, theme);
-    
+
     const chart = new Chart(canvas, {
         type: 'bar',
         data: data,
         options: options
     });
-    
+
+    chart._eduSphereType = 'bar';
     chartInstances[canvasId] = chart;
     return chart;
 }
@@ -285,20 +352,20 @@ function createDoughnutChart(canvasId, data, theme = 'light') {
         console.error(`Canvas element with ID '${canvasId}' not found`);
         return null;
     }
-    
-    // Destroy existing chart instance
+
     if (chartInstances[canvasId]) {
         chartInstances[canvasId].destroy();
     }
-    
+
     const options = getDoughnutChartOptions(theme);
-    
+
     const chart = new Chart(canvas, {
         type: 'doughnut',
         data: data,
         options: options
     });
-    
+
+    chart._eduSphereType = 'doughnut';
     chartInstances[canvasId] = chart;
     return chart;
 }
@@ -316,14 +383,13 @@ function createLineChart(canvasId, data, theme = 'light') {
         console.error(`Canvas element with ID '${canvasId}' not found`);
         return null;
     }
-    
-    // Destroy existing chart instance
+
     if (chartInstances[canvasId]) {
         chartInstances[canvasId].destroy();
     }
-    
+
     const options = getChartOptions(theme);
-    
+
     const chart = new Chart(canvas, {
         type: 'line',
         data: data,
@@ -341,7 +407,8 @@ function createLineChart(canvasId, data, theme = 'light') {
             }
         }
     });
-    
+
+    chart._eduSphereType = 'line';
     chartInstances[canvasId] = chart;
     return chart;
 }
@@ -367,27 +434,38 @@ function destroyAllCharts() {
 }
 
 /**
- * Update all charts with new theme
+ * Update all live chart instances with a new theme's colors, in place,
+ * without destroying/recreating them. This is what keeps every chart in
+ * sync with a light/dark toggle even when the page isn't reloaded - see
+ * the 'themeChanged' listener registered at the bottom of this file.
  * @param {string} theme - New theme ('light' or 'dark')
  */
 function updateChartTheme(theme) {
-    Object.values(chartInstances).forEach(chart => {
-        if (chart) {
-            const newOptions = getChartOptions(theme);
-            
-            // Update colors based on chart type
-            if (chart.config.type === 'bar') {
-                const barOptions = getBarChartOptions(chart.data.labels?.length || 1, theme);
-                Object.assign(chart.options, barOptions);
-            } else if (chart.config.type === 'doughnut' || chart.config.type === 'pie') {
-                const doughnutOptions = getDoughnutChartOptions(theme);
-                Object.assign(chart.options, doughnutOptions);
-            } else {
-                Object.assign(chart.options, newOptions);
-            }
-            
-            chart.update();
+    Object.keys(chartInstances).forEach(canvasId => {
+        const chart = chartInstances[canvasId];
+        if (!chart) return;
+
+        const dataCount = chart.data?.labels?.length || 1;
+        let newOptions;
+        if (chart._eduSphereType === 'bar') {
+            newOptions = getBarChartOptions(dataCount, theme);
+        } else if (chart._eduSphereType === 'doughnut') {
+            newOptions = getDoughnutChartOptions(theme);
+        } else {
+            newOptions = getChartOptions(theme);
         }
+
+        // Replace the theme-relevant option branches wholesale so no stale
+        // color from the previous theme lingers.
+        chart.options.color = newOptions.color;
+        chart.options.plugins.title = newOptions.plugins.title;
+        chart.options.plugins.legend = newOptions.plugins.legend;
+        chart.options.plugins.tooltip = newOptions.plugins.tooltip;
+        if (newOptions.scales) {
+            chart.options.scales = newOptions.scales;
+        }
+
+        chart.update();
     });
 }
 
@@ -400,8 +478,7 @@ function showChartEmptyState(canvasId, message = 'No data available') {
     const canvas = document.getElementById(canvasId);
     if (canvas) {
         canvas.style.display = 'none';
-        
-        // Check if empty state element exists
+
         let emptyState = document.getElementById(`${canvasId}-empty`);
         if (!emptyState) {
             emptyState = document.createElement('div');
@@ -426,7 +503,7 @@ function hideChartEmptyState(canvasId) {
     const canvas = document.getElementById(canvasId);
     if (canvas) {
         canvas.style.display = 'block';
-        
+
         const emptyState = document.getElementById(`${canvasId}-empty`);
         if (emptyState) {
             emptyState.style.display = 'none';
@@ -449,3 +526,12 @@ window.ChartConfig = {
     showEmpty: showChartEmptyState,
     hideEmpty: hideChartEmptyState
 };
+
+// Keep every chart in sync with the theme toggle automatically - this is
+// what makes the theme "centralized": no template needs to listen for
+// theme changes itself or re-create its charts.
+window.addEventListener('themeChanged', function (e) {
+    const newTheme = (e && e.detail && e.detail.theme) ||
+        document.documentElement.getAttribute('data-theme') || 'light';
+    updateChartTheme(newTheme);
+});

@@ -243,6 +243,52 @@ def create_report_header(title, logo_path, doc_width):
     return header_table
 
 
+def create_filters_section(filters, doc_width):
+    """
+    Render a compact 'Filters Applied' banner when the report was generated
+    with active filters (e.g. role, date range, search term). Shows nothing
+    if no filters were applied, so unfiltered reports are unaffected.
+    
+    Args:
+        filters: List of [label, value] pairs for filters that are actually
+                 active. Callers should only include filters with a real
+                 value (skip empty/blank ones) - e.g. [["Role", "Admin"],
+                 ["From", "01 Jul 2026"]].
+        doc_width: Available document width
+    
+    Returns:
+        List of flowables (empty list if there are no active filters)
+    """
+    if not filters:
+        return []
+    
+    styles = get_styles()
+    
+    pairs = [f"<b>{label}:</b> {value}" for label, value in filters if value not in (None, '')]
+    if not pairs:
+        return []
+    
+    filters_style = styles['normal'].clone('filters_text')
+    filters_style.fontSize = 10
+    filters_style.fontName = 'Helvetica'
+    filters_style.textColor = colors.HexColor('#3730A3')
+    filters_style.leading = 14
+    
+    text = "<b>Filters Applied:</b> &nbsp; " + "  &nbsp;|&nbsp;  ".join(pairs)
+    banner = Table([[Paragraph(text, filters_style)]], colWidths=[doc_width])
+    banner.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#EEF2FF')),
+        ('LEFTPADDING', (0, 0), (-1, -1), 12),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 12),
+        ('TOPPADDING', (0, 0), (-1, -1), 8),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+        ('LINEBEFORE', (0, 0), (0, -1), 3, colors.HexColor('#4338CA')),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+    ]))
+    
+    return [banner, Spacer(1, 14)]
+
+
 def create_summary_section(summary, doc_width):
     """
     Create the summary section: heading flush-left, with an indented
@@ -527,7 +573,7 @@ def should_use_landscape(headers):
     return False
 
 
-def build_premium_report(title, summary, headers, rows, filename, logo_path=None):
+def build_premium_report(title, summary, headers, rows, filename, logo_path=None, filters=None):
     """
     Premium PDF builder function for all non-result reports.
     Produces enterprise-quality output with consistent design across all reports.
@@ -539,6 +585,11 @@ def build_premium_report(title, summary, headers, rows, filename, logo_path=None
         rows: List of data rows (each row is a list of values)
         filename: Output filename
         logo_path: Optional path to logo image
+        filters: Optional list of [label, value] pairs for filters that were
+                 actually applied when generating this report (e.g.
+                 [["Role", "Admin"], ["From", "01 Jul 2026"]]). Only include
+                 filters with a real value - leave as None/[] when no
+                 filters are active, and nothing extra is shown.
     
     Returns:
         Flask Response object with PDF data
@@ -578,6 +629,9 @@ def build_premium_report(title, summary, headers, rows, filename, logo_path=None
     # ===== HEADER =====
     elements.append(create_report_header(title, logo_path, doc_width))
     elements.append(Spacer(1, 15))
+    
+    # ===== FILTERS APPLIED (only shown if any filters are active) =====
+    elements.extend(create_filters_section(filters, doc_width))
     
     # ===== SUMMARY =====
     if summary:
