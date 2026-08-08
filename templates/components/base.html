@@ -20,6 +20,9 @@
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
   
   <aside class="sidebar" id="sidebar">
+    <button class="sb-close-btn" id="sidebarCloseBtn" onclick="toggleSidebar()" aria-label="Close menu">
+      <i class="bi bi-x-lg"></i>
+    </button>
     <div class="sb-brand">
       <div class="sb-brand-row">
         <img src="{{ url_for('static', filename='images/logo.png') }}" alt="EduSphere Logo" class="sb-logo-img">
@@ -142,8 +145,21 @@ function showConfirm(title, message, confirmUrl) {
 function toggleSidebar() {
   const sidebar = document.getElementById('sidebar');
   const overlay = document.getElementById('sidebarOverlay');
+  const isOpening = !sidebar.classList.contains('open');
   sidebar.classList.toggle('open');
   overlay.classList.toggle('active');
+  // Prevent body scrolling while the mobile sidebar drawer is open
+  document.body.style.overflow = isOpening ? 'hidden' : '';
+}
+
+function closeSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  const overlay = document.getElementById('sidebarOverlay');
+  if (sidebar.classList.contains('open')) {
+    sidebar.classList.remove('open');
+    overlay.classList.remove('active');
+    document.body.style.overflow = '';
+  }
 }
 
 // Close sidebar when clicking a link on mobile
@@ -152,9 +168,43 @@ document.addEventListener('DOMContentLoaded', function() {
   sidebarLinks.forEach(link => {
     link.addEventListener('click', function() {
       if (window.innerWidth <= 767) {
-        toggleSidebar();
+        closeSidebar();
       }
     });
+  });
+
+  // Swipe-to-close: swiping left on the open sidebar closes it
+  const sidebarEl = document.getElementById('sidebar');
+  let touchStartX = 0;
+  let touchCurrentX = 0;
+  let tracking = false;
+
+  sidebarEl.addEventListener('touchstart', function(e) {
+    if (!sidebarEl.classList.contains('open')) return;
+    touchStartX = e.touches[0].clientX;
+    touchCurrentX = touchStartX;
+    tracking = true;
+  }, { passive: true });
+
+  sidebarEl.addEventListener('touchmove', function(e) {
+    if (!tracking) return;
+    touchCurrentX = e.touches[0].clientX;
+  }, { passive: true });
+
+  sidebarEl.addEventListener('touchend', function() {
+    if (!tracking) return;
+    tracking = false;
+    const delta = touchCurrentX - touchStartX;
+    if (delta < -60) {
+      closeSidebar();
+    }
+  });
+
+  // Reset any stale scroll-lock if the viewport is resized back to desktop
+  window.addEventListener('resize', function() {
+    if (window.innerWidth > 767) {
+      document.body.style.overflow = '';
+    }
   });
 });
 

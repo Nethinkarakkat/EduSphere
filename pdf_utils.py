@@ -407,106 +407,118 @@ TABLE_HEADER_FONT_SIZE = 11
 TABLE_BODY_FONT_SIZE = 10
 
 
-def _fit_table_layout(headers, rows, doc_width):
+# Fixed table typography - identical across every non-result report and
+# every export of the same report (e.g. Activity Log with vs without
+# filters). Font size never changes.
+TABLE_HEADER_FONT_SIZE = 11
+TABLE_BODY_FONT_SIZE = 10
+
+# Column width is driven ONLY by what kind of column it is (its header),
+# never by the specific rows in a given export. This is what guarantees
+# two exports of the same report (e.g. Activity Log filtered vs
+# unfiltered) always get pixel-identical column widths, even though the
+# actual data - and therefore how much of it needs truncating - differs.
+# Weight is relative: a column with weight 2.0 gets roughly twice the
+# width of a column with weight 1.0. Matched by keyword, case-insensitive,
+# first match wins, so it generalizes across every report in the app.
+_COLUMN_WEIGHT_RULES = [
+    ('email', 2.0),
+    ('address', 2.0),
+    ('action', 2.2),
+    ('description', 2.2),
+    ('message', 2.0),
+    ('title', 1.5),
+    ('subject', 1.4),
+    ('exam', 1.4),
+    ('classroom', 1.4),
+    ('student', 1.4),
+    ('faculty', 1.4),
+    ('name', 1.4),
+    ('user', 1.3),
+    ('timestamp', 1.6),
+    ('created', 1.5),
+    ('date', 1.3),
+    ('time', 1.2),
+    ('role', 0.8),
+    ('status', 0.8),
+    ('result', 0.9),
+    ('grade', 0.7),
+    ('score', 0.8),
+    ('total', 0.7),
+    ('max', 0.6),
+    ('min', 0.6),
+    ('avg', 0.8),
+    ('%', 0.7),
+    ('attempts', 0.9),
+]
+_DEFAULT_COLUMN_WEIGHT = 1.0
+
+
+def _header_weight(header_text):
+    """Relative width weight for a column, based only on its header text."""
+    h = str(header_text).lower()
+    for keyword, weight in _COLUMN_WEIGHT_RULES:
+        if keyword in h:
+            return weight
+    return _DEFAULT_COLUMN_WEIGHT
+
+
+def _fit_table_layout(headers, doc_width):
     """
-    Compute column widths for a FIXED header/body font size, so typography
-    is 100% standardized across every report and every export of the same
-    report - identical font size, weight, row height, and cell padding no
-    matter how much data is in the table.
+    Compute column widths from the header row alone - never from row data.
+    This is what makes column widths 100% standardized across every export
+    of the same report: two Activity Log exports with completely different
+    data (different users, different action text lengths, different row
+    counts) always get identical column widths, because the width
+    calculation never looks at the rows at all.
     
-    Column widths still adapt to content (so short columns like 'Role'
-    stay narrow and long ones like 'Email' get more room), but if a
-    dataset is large enough that content can't all fit at the fixed font
-    size, the overflow is handled with per-cell ellipsis truncation
-    (applied later in create_standard_table) rather than by shrinking the
-    font - so typography never varies between exports.
+    Any individual cell whose content doesn't fit its column at the fixed
+    font size is ellipsis-truncated later in create_standard_table -
+    consistently, since the column width it's being measured against is
+    now deterministic rather than data-dependent.
     
     Args:
         headers: List of column headers
-        rows: List of data rows
         doc_width: Available document width
     
     Returns:
         List of column widths (in points)
     """
     header_font = 'Helvetica-Bold'
-    body_font = 'Helvetica'
     cell_padding = 20  # matches LEFTPADDING(10) + RIGHTPADDING(10) used below
-    min_col_width = 60  # absolute floor so no column collapses to nothing
-
     header_size = TABLE_HEADER_FONT_SIZE
-    body_size = TABLE_BODY_FONT_SIZE
 
     # Minimum width each column needs so its header text is never
     # truncated or wrapped - headers always render in full.
-    min_widths = []
-    for h in headers:
-        w = stringWidth(str(h), header_font, header_size) + cell_padding
-        min_widths.append(max(w, min_col_width))
+    min_widths = [
+        max(stringWidth(str(h), header_font, header_size) + cell_padding, 60)
+        for h in headers
+    ]
 
-    # Width each column would need to show its widest cell content in
-    # full, at the fixed body font size (used only to decide how to
-    # distribute extra space - not to change the font size).
-    desired_widths = []
-    for idx in range(len(headers)):
-        widest = 0
-        for row in rows:
-            cell = str(row[idx]) if idx < len(row) and row[idx] is not None else ''
-            w = stringWidth(cell, body_font, body_size)
-            if w > widest:
-                widest = w
-        desired_widths.append(max(min_widths[idx], widest + cell_padding))
+    weights = [_header_weight(h) for h in headers]
+    total_weight = sum(weights) or 1.0
+    weighted_widths = [doc_width * (w / total_weight) for w in weights]
 
-    total_min = sum(min_widths)
+    # A column's header must always fit in full - if its weighted share is
+    # below that minimum, promote it to the minimum and take the
+    # difference proportionally from columns that have slack.
+    col_widths = list(weighted_widths)
+    deficit = 0.0
+    slack_indices = []
+    for i in range(len(headers)):
+        if col_widths[i] < min_widths[i]:
+            deficit += min_widths[i] - col_widths[i]
+            col_widths[i] = min_widths[i]
+        elif col_widths[i] > min_widths[i]:
+            slack_indices.append(i)
 
-    if total_min >= doc_width:
-        # Extreme edge case: even headers alone (at the fixed font size)
-        # don't fit - e.g. a great many columns. Compress proportionally;
-        # body cells will be ellipsis-truncated as needed. Font size still
-        # does not change.
-        scale = doc_width / total_min
-        return [w * scale for w in min_widths]
-
-    extra_wanted = [d - m for d, m in zip(desired_widths, min_widths)]
-    total_extra_wanted = sum(extra_wanted)
-    available_extra = doc_width - total_min
-
-    if total_extra_wanted <= available_extra:
-        # Every column can have its fully-wanted width, with room to
-        # spare - distribute the leftover proportionally so the table
-        # still spans the full page width.
-        col_widths = [m + e for m, e in zip(min_widths, extra_wanted)]
-        leftover = available_extra - total_extra_wanted
-        total_desired = sum(desired_widths)
-        if total_desired > 0:
-            col_widths = [w + leftover * (d / total_desired)
-                          for w, d in zip(col_widths, desired_widths)]
-    else:
-        # Not enough room for every column's full desired width. Use a
-        # fair max-min water-fill: modest columns (e.g. a short
-        # Timestamp) get their full desired width first; only the
-        # genuinely oversized columns (e.g. a long Email/Action) share
-        # and get capped on whatever space is left. This prevents one
-        # very wide column from starving a short one down to nothing.
-        n = len(extra_wanted)
-        allocated = [0.0] * n
-        remaining = set(range(n))
-        pool = available_extra
-        progressed = True
-        while progressed and remaining and pool > 0:
-            progressed = False
-            fair_share = pool / len(remaining)
-            for i in list(remaining):
-                if extra_wanted[i] <= fair_share:
-                    allocated[i] = extra_wanted[i]
-                    pool -= extra_wanted[i]
-                    remaining.discard(i)
-                    progressed = True
-        if remaining:
-            share = pool / len(remaining)
-            for i in remaining:
-                allocated[i] = share
-        col_widths = [m + a for m, a in zip(min_widths, allocated)]
+    if deficit > 0 and slack_indices:
+        total_slack = sum(col_widths[i] - min_widths[i] for i in slack_indices)
+        if total_slack > 0:
+            for i in slack_indices:
+                available = col_widths[i] - min_widths[i]
+                take = deficit * (available / total_slack)
+                col_widths[i] -= take
 
     return col_widths
 
@@ -536,7 +548,7 @@ def create_standard_table(headers, rows, doc_width):
         return Paragraph('No records available.', styles['empty'])
     
     # Column widths adapt to content; font size is always fixed
-    col_widths = _fit_table_layout(headers, rows, doc_width)
+    col_widths = _fit_table_layout(headers, doc_width)
     header_size = TABLE_HEADER_FONT_SIZE
     body_size = TABLE_BODY_FONT_SIZE
     cell_padding = 20

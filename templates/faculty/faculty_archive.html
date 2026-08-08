@@ -76,6 +76,7 @@
     </div>
     <div class="card-body" style="padding:0;">
       {% if archived_classrooms %}
+      <div class="tbl-wrap">
       <table class="archive-table">
         <thead>
           <tr>
@@ -109,6 +110,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}
       <div class="empty-archive">
         <div class="icon">🗂️</div>
@@ -129,6 +131,7 @@
     </div>
     <div class="card-body" style="padding:0;">
       {% if archived_exams %}
+      <div class="tbl-wrap">
       <table class="archive-table">
         <thead>
           <tr>
@@ -162,6 +165,7 @@
           {% endfor %}
         </tbody>
       </table>
+      </div>
       {% else %}
       <div class="empty-archive">
         <div class="icon">📝</div>

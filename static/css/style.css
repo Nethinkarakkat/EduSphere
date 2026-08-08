@@ -1150,6 +1150,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .sidebar,.topbar,.exam-topbar,.no-print { display: none !important; }
   .main { margin-left: 0 !important; }
   .page { padding: 0 !important; }
+  .tbl-wrap, .table-responsive { overflow-x: visible !important; }
 }
 
 /* ── Dark Mode ─────────────────────────────── */
@@ -1730,7 +1731,10 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .topbar-left { flex-wrap: wrap; gap: 4px; align-items: center; }
   .topbar-left h1 { font-size: 16px; margin: 0; line-height: 1.2; }
   .topbar-right { flex-wrap: wrap; gap: 4px; align-items: center; }
-  .topbar { padding: 8px 10px; min-height: 48px; }
+  /* height/max-height must be reset - the base .topbar has a hard
+     height:96px/max-height:96px cap that would clip a wrapped title or
+     buttons that move below it */
+  .topbar { padding: 8px 10px; min-height: 48px; height: auto; max-height: none; }
   .mobile-menu-btn { width: 36px; height: 36px; font-size: 18px; }
   
   /* Tables: Horizontal scroll allowed */
@@ -1773,20 +1777,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .text-muted { font-size: 12px; }
   .text-small { font-size: 11px; }
 
-  /* Profile pages: Natural stacking */
-  .profile-layout { grid-template-columns: 1fr; gap: 12px; }
-  .profile-avatar-section { text-align: center; padding: 16px; }
-  .profile-avatar-section .profile-avatar { width: 80px; height: 80px; margin: 0 auto 12px; }
-  .profile-info-section { padding: 12px; }
-  .profile-name { font-size: 18px; text-align: center; }
-  .profile-role { font-size: 14px; text-align: center; }
-  .profile-actions { display: flex; flex-direction: column; gap: 8px; }
-  .profile-actions .btn { width: 100%; }
-
-  /* Create Exam: Single-column */
-  .exam-layout { grid-template-columns: 1fr; gap: 16px; }
-  .exam-summary { margin-top: 16px; }
-
   /* Charts: Responsive width */
   .chart-container { width: 100%; overflow-x: auto; margin: 0 -12px; padding: 0 12px; }
   .chart-container canvas { min-width: 280px; max-width: 100%; height: auto !important; }
@@ -1822,15 +1812,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .faculty-card { padding: 12px; min-height: auto; }
   .report-card { padding: 12px; min-height: auto; }
 
-  /* Typography scaling already handled above with h1, h2, h3 */
-
-  /* Mobile: 1 card per row */
-  .stats-grid { grid-template-columns: 1fr; gap: 8px; }
-  .stats-card { padding: 12px; }
-  .stats-card .stats-icon { width: 36px; height: 36px; font-size: 16px; }
-  .stats-card .stats-value { font-size: 20px; }
-  .stats-card .stats-label { font-size: 10px; }
-  
   /* Auth logo scaling */
   .auth-logo-img { width: 64px; height: 64px; }
   .auth-logo-text { font-size: 28px; font-weight: 600; }
@@ -1844,6 +1825,26 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 
 /* Mobile (≤767px) */
 @media (max-width: 767px) {
+  /* Card headers (title + action button, e.g. "Exam Results Overview" /
+     "View Report"): allow the button to wrap below the title instead of
+     squeezing or overflowing on narrow phones */
+  .card-head { flex-wrap: wrap; gap: 8px; row-gap: 6px; }
+
+  /* Images/icons: scale proportionally, never overflow their container */
+  img { max-width: 100%; height: auto; }
+
+  /* Charts: safety net applied directly to <canvas>, since the actual
+     chart markup (Admin Reports, Faculty Analytics, Faculty Dashboard)
+     uses inline styles rather than the .chart-container class - Chart.js
+     itself is already responsive (responsive:true, maintainAspectRatio:
+     false in chart-config.js), this just guarantees the canvas element
+     can never become wider than its card on any phone width. */
+  .card-body canvas, canvas { max-width: 100% !important; }
+
+  /* Prevent long unbroken text (long emails, join codes, etc.) from
+     forcing horizontal overflow inside cards/badges */
+  .card, .badge, .classroom-code-value { overflow-wrap: break-word; word-break: break-word; }
+
   /* Auth: Hide feature cards on phones */
   .auth-features { display: none; }
   .auth-illustration-section { display: none; }
@@ -1900,6 +1901,26 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     margin-right: 8px;
   }
   
+  /* Sidebar close (×) button - only shown inside the mobile drawer */
+  .sb-close-btn {
+    display: flex !important;
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    min-height: 36px;
+    background: rgba(255,255,255,0.08);
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 16px;
+    color: var(--white, #fff);
+    z-index: 5;
+  }
+
   /* Sidebar branding: Larger logo on mobile */
   .sb-brand { height: 72px; min-height: 72px; max-height: 72px; padding: 14px 20px; }
   .sb-logo { width: 56px; height: 56px; }
@@ -1925,10 +1946,20 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   /* Main content: Full width */
   .main { margin-left: 0; }
   
-  /* Topbar: Add hamburger button */
-  .topbar { padding: 8px 10px; min-height: 48px; }
-  .topbar-left { flex: 1; display: flex; align-items: center; gap: 8px; }
-  .topbar-left h1 { font-size: 16px; margin: 0; }
+  /* Topbar: Add hamburger button. height/max-height reset - the base
+     .topbar has a hard height:96px/max-height:96px cap that would clip
+     a wrapped title or buttons that move below it on narrow phones */
+  .topbar {
+    padding: 10px 12px;
+    min-height: 48px;
+    height: auto;
+    max-height: none;
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .topbar-left { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .topbar-left h1 { font-size: 16px; margin: 0; white-space: normal; overflow-wrap: break-word; }
+  .topbar-right { flex: 1 1 100%; justify-content: flex-start; }
   .topbar-right { flex-wrap: wrap; gap: 6px; align-items: center; }
   
   /* Dashboard cards: 1 per row */
@@ -1954,10 +1985,54 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .form-row > * { width: 100%; }
   .form-group { margin-bottom: 20px; }
   .form-control { width: 100%; }
-  .btn { width: 100%; }
+
+  /* Touch target: every button gets a comfortable minimum tap height,
+     WITHOUT forcing full width - that would break inline/icon buttons
+     like the copy button next to Join Code, the theme toggle, and table
+     row actions (fixed below). Full-width is applied ONLY to buttons in
+     contexts meant to stack (forms, filter bars, modals, button groups). */
+  .btn { min-height: 44px; }
+  .btn-sm { min-height: 44px; }
+
+  /* Buttons that must stay compact/icon-sized on mobile, not full width */
+  .table-actions .btn,
+  .table-actions a.btn,
+  .classroom-code-card button,
+  #themeToggle,
+  .mobile-menu-btn,
+  td .btn,
+  th .btn {
+    width: auto;
+    min-height: 40px;
+  }
+
+  /* Buttons meant to stack full-width on mobile */
   .btn-group { flex-direction: column; width: 100%; }
   .btn-group .btn { width: 100%; margin-bottom: 8px; }
-  
+
+  /* Filter/search forms (GET forms used for filtering lists across the
+     app): stack every field full width, buttons full width and equal
+     size. Relies on .filter-form added alongside each form's existing
+     inline flex/grid style - flex-direction/grid-template-columns aren't
+     set inline, so this applies without needing to fight specificity. */
+  .filter-form {
+    flex-direction: column !important;
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+  }
+  .filter-form > * { width: 100%; }
+  .filter-form .btn { width: 100%; }
+  .filter-grid { grid-template-columns: 1fr !important; }
+  .filter-form-actions { flex-direction: column !important; width: 100%; }
+  .filter-form-actions .btn { width: 100%; }
+
+  /* Topbar action buttons (Export PDF/CSV, Add User, etc.): stack full
+     width below the title on narrow phones. Theme toggle stays compact
+     and icon-sized regardless. */
+  .topbar-right { width: 100%; }
+  .topbar-right .btn:not(#themeToggle) { width: 100%; }
+  .topbar-right #themeToggle { width: auto; flex-shrink: 0; }
+
   /* Profile page: Stack vertically */
   .profile-layout { flex-direction: column; }
   .profile-main { order: 1; }
@@ -2027,10 +2102,36 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .sb-brand-sub { font-size: 11px; white-space: nowrap; }
 }
 
+/* Small phones (≤380px) - covers 320px, 360px, 375px devices where the
+   general mobile rules above still leave a little too much fixed
+   min-width on a few elements. Chart.js is already responsive
+   (responsive:true, maintainAspectRatio:false in chart-config.js), so
+   canvases can shrink all the way to the container instead of forcing
+   horizontal scroll at this width. */
+@media (max-width: 380px) {
+  .chart-container canvas { min-width: 0 !important; width: 100% !important; }
+  .chart-container { overflow-x: visible; margin: 0; padding: 0; }
+
+  /* Join Code must never overflow its card at the narrowest widths */
+  .classroom-code-value {
+    font-size: 17px;
+    letter-spacing: 0.08em;
+    word-break: break-all;
+    overflow-wrap: break-word;
+  }
+  .classroom-code-card { flex-wrap: wrap; gap: 10px; }
+
+  .container { padding: 0 12px; }
+  .card { padding: 12px; }
+  .stats-card .stats-value { font-size: 18px; }
+  h1 { font-size: 20px; }
+}
+
 /* Hide mobile menu button on desktop and tablet */
 @media (min-width: 768px) {
   .mobile-menu-btn { display: none !important; }
   .sidebar-overlay { display: none !important; }
+  .sb-close-btn { display: none !important; }
   
   /* Reset sidebar transform for desktop/tablet */
   .sidebar { transform: translateX(0) !important; }
