@@ -376,17 +376,50 @@ def get_column_alignment(header_name):
     return 'LEFT'
 
 
+def _truncate_to_width(text, font, size, max_width):
+    """
+    Truncate text with an ellipsis so it fits within max_width at a FIXED
+    font size, instead of shrinking the font. This is what keeps typography
+    identical across every export of a report regardless of how much data
+    or how long the content happens to be - only the rare, unusually-long
+    cell gets truncated, the font size itself never changes.
+    """
+    if stringWidth(text, font, size) <= max_width:
+        return text
+    ellipsis = '\u2026'
+    lo, hi = 0, len(text)
+    best = ellipsis
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        candidate = text[:mid].rstrip() + ellipsis
+        if stringWidth(candidate, font, size) <= max_width:
+            best = candidate
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return best
+
+
+# Fixed table typography - identical across every non-result report and
+# every export of the same report (e.g. Activity Log with vs without
+# filters). Column WIDTH still adapts to content, but font size never does.
+TABLE_HEADER_FONT_SIZE = 11
+TABLE_BODY_FONT_SIZE = 10
+
+
 def _fit_table_layout(headers, rows, doc_width):
     """
-    Compute column widths and a font size so every header and every cell
-    fits on a single line - no wrapped/broken words like 'Attempt s'.
+    Compute column widths for a FIXED header/body font size, so typography
+    is 100% standardized across every report and every export of the same
+    report - identical font size, weight, row height, and cell padding no
+    matter how much data is in the table.
     
-    Strategy: measure the natural (unwrapped) text width of every header
-    and every cell, size each column to its widest content, then if the
-    total is wider than the page, shrink header/body font sizes together
-    (in 0.5pt steps) and re-measure until it fits or a readable floor is
-    reached. Only as a last-resort fallback (extremely long content even
-    at minimum font size) do columns get proportionally compressed.
+    Column widths still adapt to content (so short columns like 'Role'
+    stay narrow and long ones like 'Email' get more room), but if a
+    dataset is large enough that content can't all fit at the fixed font
+    size, the overflow is handled with per-cell ellipsis truncation
+    (applied later in create_standard_table) rather than by shrinking the
+    font - so typography never varies between exports.
     
     Args:
         headers: List of column headers
@@ -394,62 +427,99 @@ def _fit_table_layout(headers, rows, doc_width):
         doc_width: Available document width
     
     Returns:
-        (col_widths, header_font_size, body_font_size)
+        List of column widths (in points)
     """
     header_font = 'Helvetica-Bold'
     body_font = 'Helvetica'
     cell_padding = 20  # matches LEFTPADDING(10) + RIGHTPADDING(10) used below
+    min_col_width = 60  # absolute floor so no column collapses to nothing
 
-    default_header_size = 11
-    default_body_size = 10
-    min_header_size = 8
-    min_body_size = 7
+    header_size = TABLE_HEADER_FONT_SIZE
+    body_size = TABLE_BODY_FONT_SIZE
 
-    def measure(h_size, b_size):
-        widths = []
-        for idx, h in enumerate(headers):
-            widest = stringWidth(str(h), header_font, h_size)
-            for row in rows:
-                cell = str(row[idx]) if idx < len(row) and row[idx] is not None else ''
-                w = stringWidth(cell, body_font, b_size)
-                if w > widest:
-                    widest = w
-            widths.append(widest + cell_padding)
-        return widths
+    # Minimum width each column needs so its header text is never
+    # truncated or wrapped - headers always render in full.
+    min_widths = []
+    for h in headers:
+        w = stringWidth(str(h), header_font, header_size) + cell_padding
+        min_widths.append(max(w, min_col_width))
 
-    header_size, body_size = default_header_size, default_body_size
-    widths = measure(header_size, body_size)
-    total = sum(widths)
+    # Width each column would need to show its widest cell content in
+    # full, at the fixed body font size (used only to decide how to
+    # distribute extra space - not to change the font size).
+    desired_widths = []
+    for idx in range(len(headers)):
+        widest = 0
+        for row in rows:
+            cell = str(row[idx]) if idx < len(row) and row[idx] is not None else ''
+            w = stringWidth(cell, body_font, body_size)
+            if w > widest:
+                widest = w
+        desired_widths.append(max(min_widths[idx], widest + cell_padding))
 
-    # Shrink fonts together (keeping header slightly larger than body)
-    # until the content fits on one line across the page width.
-    while total > doc_width and (header_size > min_header_size or body_size > min_body_size):
-        if header_size > min_header_size:
-            header_size -= 0.5
-        if body_size > min_body_size:
-            body_size -= 0.5
-        widths = measure(header_size, body_size)
-        total = sum(widths)
+    total_min = sum(min_widths)
 
-    if total > doc_width:
-        # Rare edge case: even at minimum readable font size the content
-        # is wider than the page. Compress proportionally as a last resort.
-        scale = doc_width / total
-        widths = [w * scale for w in widths]
+    if total_min >= doc_width:
+        # Extreme edge case: even headers alone (at the fixed font size)
+        # don't fit - e.g. a great many columns. Compress proportionally;
+        # body cells will be ellipsis-truncated as needed. Font size still
+        # does not change.
+        scale = doc_width / total_min
+        return [w * scale for w in min_widths]
+
+    extra_wanted = [d - m for d, m in zip(desired_widths, min_widths)]
+    total_extra_wanted = sum(extra_wanted)
+    available_extra = doc_width - total_min
+
+    if total_extra_wanted <= available_extra:
+        # Every column can have its fully-wanted width, with room to
+        # spare - distribute the leftover proportionally so the table
+        # still spans the full page width.
+        col_widths = [m + e for m, e in zip(min_widths, extra_wanted)]
+        leftover = available_extra - total_extra_wanted
+        total_desired = sum(desired_widths)
+        if total_desired > 0:
+            col_widths = [w + leftover * (d / total_desired)
+                          for w, d in zip(col_widths, desired_widths)]
     else:
-        # Distribute the leftover space proportionally so the table still
-        # spans the full page width, rather than leaving a ragged gap.
-        leftover = doc_width - total
-        if total > 0:
-            widths = [w + leftover * (w / total) for w in widths]
+        # Not enough room for every column's full desired width. Use a
+        # fair max-min water-fill: modest columns (e.g. a short
+        # Timestamp) get their full desired width first; only the
+        # genuinely oversized columns (e.g. a long Email/Action) share
+        # and get capped on whatever space is left. This prevents one
+        # very wide column from starving a short one down to nothing.
+        n = len(extra_wanted)
+        allocated = [0.0] * n
+        remaining = set(range(n))
+        pool = available_extra
+        progressed = True
+        while progressed and remaining and pool > 0:
+            progressed = False
+            fair_share = pool / len(remaining)
+            for i in list(remaining):
+                if extra_wanted[i] <= fair_share:
+                    allocated[i] = extra_wanted[i]
+                    pool -= extra_wanted[i]
+                    remaining.discard(i)
+                    progressed = True
+        if remaining:
+            share = pool / len(remaining)
+            for i in remaining:
+                allocated[i] = share
+        col_widths = [m + a for m, a in zip(min_widths, allocated)]
 
-    return widths, header_size, body_size
+    return col_widths
 
 
 def create_standard_table(headers, rows, doc_width):
     """
     Create a modern table with zebra rows, auto-alignment, and content-fit
-    column widths so headers and cell text always render on a single line.
+    column widths. Header and body font size/weight are FIXED constants
+    (TABLE_HEADER_FONT_SIZE / TABLE_BODY_FONT_SIZE) so typography is
+    identical across every report and every export of the same report,
+    regardless of how much data it contains. Any cell too long for its
+    column at the fixed font size is truncated with an ellipsis rather
+    than wrapping or shrinking the font.
     
     Args:
         headers: List of column headers
@@ -465,15 +535,18 @@ def create_standard_table(headers, rows, doc_width):
     if not rows or len(rows) == 0:
         return Paragraph('No records available.', styles['empty'])
     
-    # Size columns (and font, if needed) so nothing wraps to a second line
-    col_widths, header_size, body_size = _fit_table_layout(headers, rows, doc_width)
+    # Column widths adapt to content; font size is always fixed
+    col_widths = _fit_table_layout(headers, rows, doc_width)
+    header_size = TABLE_HEADER_FONT_SIZE
+    body_size = TABLE_BODY_FONT_SIZE
+    cell_padding = 20
     
-    # Header style at the fitted size (white text, bold, centered)
+    # Header style at the fixed size (white text, bold, centered)
     header_style = styles['table_header'].clone('table_header_fit')
     header_style.fontSize = header_size
     header_style.leading = header_size + 2
     
-    # Body style at the fitted size - single line, no word-splitting
+    # Body style at the fixed size - single line, no word-splitting
     body_base_style = styles['normal'].clone('table_body_fit')
     body_base_style.fontSize = body_size
     body_base_style.leading = body_size + 3
@@ -488,7 +561,10 @@ def create_standard_table(headers, rows, doc_width):
         wrapped_headers.append(p)
     
     # Convert rows to Paragraph objects with auto-alignment; column widths
-    # were sized to each cell's natural width so text stays on one line
+    # were sized to each cell's natural width so text stays on one line at
+    # the fixed font size. Any cell wider than its column (rare, only for
+    # unusually long content) is ellipsis-truncated - font size never
+    # changes to compensate.
     wrapped_rows = []
     for row in rows:
         wrapped_row = []
@@ -497,7 +573,10 @@ def create_standard_table(headers, rows, doc_width):
             alignment = get_column_alignment(header_name)
             cell_style = body_base_style.clone(f'cell_{idx}')
             cell_style.alignment = 0 if alignment == 'LEFT' else (1 if alignment == 'CENTER' else 2)
-            p = Paragraph(str(cell) if cell else '', cell_style)
+            cell_text = str(cell) if cell else ''
+            max_text_width = (col_widths[idx] if idx < len(col_widths) else doc_width) - cell_padding
+            cell_text = _truncate_to_width(cell_text, 'Helvetica', body_size, max_text_width)
+            p = Paragraph(cell_text, cell_style)
             wrapped_row.append(p)
         wrapped_rows.append(wrapped_row)
     

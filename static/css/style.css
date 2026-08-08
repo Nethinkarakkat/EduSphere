@@ -267,14 +267,14 @@ body {
   color: #FFFFFF;
 }
 
-/* Dark mode classroom code card */
+/* Dark mode classroom code card - colors only; size/weight/spacing must
+   stay identical to light mode (font-size, font-weight, letter-spacing
+   are intentionally NOT repeated here so they inherit from the base
+   .classroom-code-value rule above and never differ between themes) */
 [data-theme="dark"] .classroom-code-card {
   background: var(--primary-dark);
 }
 [data-theme="dark"] .classroom-code-value {
-  font-size: 34px;
-  font-weight: 700;
-  letter-spacing: 6px;
   color: #FFFFFF !important;
 }
 [data-theme="dark"] .classroom-code-card button {
@@ -1285,7 +1285,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 
 [data-theme="dark"] .q-text {
   color: var(--white);
-  font-weight: 600;
 }
 
 [data-theme="dark"] .q-num {
@@ -1297,7 +1296,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   background: var(--card-bg);
   border: 1.5px solid var(--border-color);
   color: var(--text-primary);
-  font-weight: 500;
 }
 
 [data-theme="dark"] .opt:hover {
@@ -1327,7 +1325,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   background: var(--success);
   border: 1px solid var(--success);
   color: var(--white);
-  font-weight: 600;
 }
 
 /* Correct answer container */
@@ -1368,7 +1365,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   background: var(--success);
   border: 1px solid var(--success);
   color: var(--white);
-  font-weight: 600;
 }
 
 /* Correct answer label */
@@ -1382,7 +1378,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 
 [data-theme="dark"] .correct-answer-label {
   color: var(--success-light);
-  font-weight: 700;
   text-transform: uppercase;
 }
 
@@ -1400,7 +1395,6 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   opacity: 1;
   visibility: visible;
   display: block;
-  font-weight: 600;
 }
 [data-theme="dark"] .bdg-warning {
   background: var(--warning);
