@@ -1,7 +1,14 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Declares that EduSphere explicitly supports both color schemes, so
+       browsers don't assume the page is unstyled for dark mode. This is
+       a baseline/passive hint only - it does NOT decide which scheme is
+       shown. Our own data-theme attribute (via the CSS color-scheme
+       property, see style.css) always takes precedence and remains the
+       actual source of truth for which theme is active. -->
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}EduSphere{% endblock %}</title>
   <!-- CRITICAL: Load ThemeManager BEFORE CSS to prevent theme flash -->
   <script src="{{ url_for('static', filename='js/theme-manager.js') }}"></script>

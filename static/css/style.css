@@ -150,6 +150,24 @@ input[type="radio"]:focus {
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Prevent the page itself from ever scrolling horizontally (e.g. if any
+   element is briefly wider than the viewport). This does NOT affect
+   .tbl-wrap/.table-responsive/.chart-container, which have their own
+   independent overflow-x:auto and keep scrolling horizontally exactly
+   as intended - this only contains the outer page. */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Chart canvases (Admin Reports, Faculty Analytics, Faculty Dashboard):
+   colors are semantically meaningful (pass=green/fail=red, score bars,
+   etc.) and must render with their true configured colors, not be
+   re-colored by forced-colors/high-contrast mode. No effect on normal
+   rendering - chart design/colors/dimensions are otherwise untouched. */
+canvas { forced-color-adjust: none; }
+
 body {
   font-family: 'Inter', -apple-system, sans-serif;
   background: var(--page-bg);
@@ -194,6 +212,9 @@ body {
 .sb-logo-img {
   width: 60px; height: 60px; object-fit: contain;
   flex-shrink: 0;
+  /* Brand image must render with its true colors, not be re-colored by
+     forced-colors mode. No effect on normal rendering/desktop. */
+  forced-color-adjust: none;
 }
 .sb-brand-text-container {
   display: flex;
@@ -407,6 +428,13 @@ table.tbl  { width: 100%; border-collapse: collapse; }
   display: inline-flex; align-items: center; gap: 4px;
   padding: 3px 9px; border-radius: 99px;
   font-size: 11px; font-weight: 600;
+  /* Status color (success/warning/danger) is semantically meaningful -
+     e.g. green=Pass vs red=Fail - so it must not be re-colored by the
+     browser's forced-colors/high-contrast mode. This is a no-op under
+     normal rendering; it only takes effect if the OS/browser is in a
+     forced-colors mode, and does not affect desktop appearance
+     otherwise. Applied narrowly to badges only, not the whole app. */
+  forced-color-adjust: none;
 }
 .bdg-primary { background: var(--primary-light); color: var(--primary); }
 .bdg-success { background: var(--success-light); color: #059669; }
@@ -547,6 +575,26 @@ textarea,
   -webkit-appearance: none;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   vertical-align: middle;
+}
+
+/* Chrome autofill: Chrome ignores background/color on autofilled inputs
+   and substitutes its own yellow/white fill + black text via an internal
+   UA style, regardless of our theme - this can make text unreadable
+   against a dark card. The -webkit-box-shadow inset trick paints over
+   Chrome's autofill background with our own --input-bg (huge spread so
+   it fully covers, with a long transition-delay so it doesn't visibly
+   flash), and -webkit-text-fill-color overrides the text color the same
+   way `color` normally would. Explicit for both themes via --input-*. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: var(--input-text);
+  -webkit-box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  box-shadow: 0 0 0 1000px var(--input-bg) inset;
+  caret-color: var(--input-text);
+  transition: background-color 600000s 0s, color 600000s 0s;
 }
 
 /* ── Select: appearance:none strips OS chrome, custom arrow restores arrow ──
@@ -1825,6 +1873,22 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 
 /* Mobile (≤767px) */
 @media (max-width: 767px) {
+  /* ── Chrome for Android "Force Dark" fix ──────────────────────────
+     Chrome on Android has a heuristic (independent of our own
+     data-theme system) that auto-darkens/inverts pages it judges as
+     not explicitly supporting dark mode - it can override our Light
+     Mode's own colors even though the page is rendering correctly.
+     Desktop Chrome has no such feature, and Safari has no equivalent
+     heuristic, so this is scoped to mobile widths only and has no
+     effect on either of those.
+     Declaring color-scheme to match our OWN current data-theme (rather
+     than "light dark", which would just defer to the OS preference and
+     could visually mismatch our own toggle) is the standards-based
+     signal that tells Chrome "this page already handles its color
+     scheme itself - do not apply automatic dark-mode simulation." */
+  :root { color-scheme: only light; }
+  [data-theme="dark"] { color-scheme: only dark; }
+
   /* Card headers (title + action button, e.g. "Exam Results Overview" /
      "View Report"): allow the button to wrap below the title instead of
      squeezing or overflowing on narrow phones */
@@ -1865,12 +1929,33 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .auth-form-side { padding: 8px 12px; }
   .auth-card { padding: 16px; margin: 0; }
   
-  /* Sidebar: Off-canvas with hamburger menu */
+  /* Sidebar: Off-canvas drawer, zoom-safe.
+     - position:fixed + explicit top/left/bottom (not height:Xvh) keeps it
+       pinned to the viewport at any zoom level, independent of page
+       content/scroll.
+     - width uses min(85vw, 320px): scales with the actual viewport
+       instead of a hard percentage/pixel value, and never exceeds a
+       sensible 320px max on larger phones/tablet-width phones.
+     - height:100dvh (dynamic viewport height) with 100vh as a fallback
+       for browsers that don't support dvh - handles mobile browser
+       chrome (address bar) showing/hiding without letting the drawer's
+       height become wrong. */
   .sidebar {
-    width: 80%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(85vw, 320px);
     max-width: 320px;
+    height: 100vh;
+    height: 100dvh;
     transform: translateX(-100%);
     transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 200;
+    /* Respect device notches/rounded corners on the leading edge */
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
   }
   .sidebar.open { transform: translateX(0); }
   
@@ -1956,11 +2041,43 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     max-height: none;
     flex-wrap: wrap;
     row-gap: 8px;
+    justify-content: space-between;
   }
-  .topbar-left { flex: 1 1 100%; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .topbar-left {
+    flex: 1 1 auto;
+    min-width: 140px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
   .topbar-left h1 { font-size: 16px; margin: 0; white-space: normal; overflow-wrap: break-word; }
-  .topbar-right { flex: 1 1 100%; justify-content: flex-start; }
-  .topbar-right { flex-wrap: wrap; gap: 6px; align-items: center; }
+
+  /* Page header actions (e.g. "Users" / "Add User" on Admin Dashboard):
+     compact buttons docked to the right of the header, on the same row
+     as the title whenever there's room. flex:0 0 auto keeps each button
+     sized to its own content (icon + label) rather than stretching full
+     width; .topbar-left's min-width above is what causes this block to
+     wrap onto its own compact second row - rather than squeezing the
+     title or overflowing - once the combined width no longer fits
+     (e.g. on 320-360px phones), instead of the two overlapping. */
+  .topbar-right {
+    flex: 0 0 auto;
+    margin-left: auto;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 6px;
+  }
+  .topbar-right .btn {
+    width: auto;
+    min-height: 44px;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  .topbar-right #themeToggle { flex-shrink: 0; }
   
   /* Dashboard cards: 1 per row */
   .stats-grid { grid-template-columns: 1fr; gap: 8px; }
@@ -2026,12 +2143,9 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .filter-form-actions { flex-direction: column !important; width: 100%; }
   .filter-form-actions .btn { width: 100%; }
 
-  /* Topbar action buttons (Export PDF/CSV, Add User, etc.): stack full
-     width below the title on narrow phones. Theme toggle stays compact
-     and icon-sized regardless. */
-  .topbar-right { width: 100%; }
-  .topbar-right .btn:not(#themeToggle) { width: 100%; }
-  .topbar-right #themeToggle { width: auto; flex-shrink: 0; }
+  /* Topbar action buttons (Users, Add User, Export PDF/CSV, etc.):
+     handled above via .topbar-right - compact, right-aligned, wraps to
+     its own row only when it doesn't fit alongside the title. */
 
   /* Profile page: Stack vertically */
   .profile-layout { flex-direction: column; }
@@ -2125,6 +2239,15 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .card { padding: 12px; }
   .stats-card .stats-value { font-size: 18px; }
   h1 { font-size: 20px; }
+
+  /* Header actions (Users / Add User etc.): extra-compact so 2-3 actions
+     comfortably fit on their own row even at 320px width */
+  .topbar-right .btn {
+    padding: 7px 10px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  .topbar-right .btn i { font-size: 13px; }
 }
 
 /* Hide mobile menu button on desktop and tablet */
