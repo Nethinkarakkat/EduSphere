@@ -43,7 +43,8 @@
         <div><span class="text-muted text-sm">Pending</span><div class="font-bold" style="font-size:24px;color:var(--warning);">{{ pending_faculty }}</div></div>
       </div>
       {% if faculty_list %}
-      <div class="tbl-wrap"><table class="tbl">
+      <!-- Desktop table -->
+      <div class="desktop-table tbl-wrap"><table class="tbl">
         <thead><tr><th>Faculty Name</th><th>Classrooms</th><th>Exams</th><th>Students</th></tr></thead>
         <tbody>
           {% for f in faculty_list[:5] %}
@@ -74,6 +75,40 @@
           {% endfor %}
         </tbody>
       </table></div>
+      <!-- Mobile cards -->
+      <div class="mobile-cards mobile-overview-list">
+        {% for f in faculty_list[:5] %}
+        <div class="mobile-overview-item">
+          <div class="mobile-overview-header">
+            {% set avatar = get_avatar(f) %}
+            {% set initial = f["name"][0]|upper if f and "name" in f else "U" %}
+            {% if avatar %}
+              <img src="{{ avatar }}" alt="Profile" class="mobile-overview-avatar" data-initial="{{ initial }}" onerror="this.style.display='none'; this.parentElement.style.background='var(--primary-light)'; this.parentElement.innerHTML=this.dataset.initial;">
+            {% else %}
+              <div class="mobile-overview-avatar">{{ initial }}</div>
+            {% endif %}
+            <div>
+              <div class="mobile-overview-name">{{ f.name }}</div>
+              <div class="mobile-overview-email">{{ f.email }}</div>
+            </div>
+          </div>
+          <div class="mobile-overview-stats">
+            <div class="mobile-overview-stat">
+              <div class="mobile-overview-stat-label">Classrooms</div>
+              <div class="mobile-overview-stat-value">{{ f.classroom_count if f.classroom_count else 0 }}</div>
+            </div>
+            <div class="mobile-overview-stat">
+              <div class="mobile-overview-stat-label">Exams</div>
+              <div class="mobile-overview-stat-value">{{ f.exam_count if f.exam_count else 0 }}</div>
+            </div>
+            <div class="mobile-overview-stat">
+              <div class="mobile-overview-stat-label">Students</div>
+              <div class="mobile-overview-stat-value">{{ f.student_count if f.student_count else 0 }}</div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
       {% else %}
       <div class="text-center text-muted" style="padding:20px;">No faculty data yet.</div>
       {% endif %}
@@ -93,7 +128,8 @@
         <div><span class="text-muted text-sm">Active Exams</span><div class="font-bold" style="font-size:24px;color:var(--success);">{{ active_exams }}</div></div>
       </div>
       {% if classroom_list %}
-      <div class="tbl-wrap"><table class="tbl">
+      <!-- Desktop table -->
+      <div class="desktop-table tbl-wrap"><table class="tbl">
         <thead><tr><th>Classroom Name</th><th>Student Count</th></tr></thead>
         <tbody>
           {% for c in classroom_list[:5] %}
@@ -104,6 +140,22 @@
           {% endfor %}
         </tbody>
       </table></div>
+      <!-- Mobile cards -->
+      <div class="mobile-cards mobile-overview-list">
+        {% for c in classroom_list[:5] %}
+        <div class="mobile-overview-item">
+          <div class="mobile-overview-header">
+            <div class="mobile-overview-name">{{ c.name }}</div>
+          </div>
+          <div class="mobile-overview-stats">
+            <div class="mobile-overview-stat">
+              <div class="mobile-overview-stat-label">Students</div>
+              <div class="mobile-overview-stat-value">{{ c.student_count if c.student_count else 0 }}</div>
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
       {% else %}
       <div class="text-center text-muted" style="padding:20px;">No classroom data yet.</div>
       {% endif %}
@@ -118,14 +170,14 @@
     <h5><i class="bi bi-hourglass-split" style="color:var(--warning);margin-right:6px;"></i>Pending Faculty Approvals</h5>
     <span class="badge bdg-warning">{{ pending|length }}</span>
   </div>
-  <div class="tbl-wrap"><table class="tbl">
+  <div class="responsive-table-container"><table class="tbl">
     <thead><tr><th>Name</th><th class="email-col">Email</th><th>Action</th></tr></thead>
     <tbody>
       {% for p in pending %}
       <tr>
         <td class="font-semi">{{ p.name }}</td>
-        <td class="text-muted">{{ p.email }}</td>
-        <td><a href="/approve/{{ p.id }}" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Approve</a></td>
+        <td class="text-muted email-col">{{ p.email }}</td>
+        <td class="table-actions"><a href="/approve/{{ p.id }}" class="btn btn-success btn-sm"><i class="bi bi-check-lg"></i> Approve</a></td>
       </tr>
       {% endfor %}
     </tbody>
@@ -139,17 +191,17 @@
     <h5><i class="bi bi-activity" style="color:var(--primary);margin-right:6px;"></i>Recent Activity</h5>
     <a href="/admin/activity" class="btn btn-ghost btn-sm">View All <i class="bi bi-arrow-right"></i></a>
   </div>
-  <div style="max-height:220px;overflow-y:auto;overflow-x:auto;">
+  <div class="responsive-table-container" style="max-height:220px;overflow-y:auto;">
     <table class="tbl">
       <tbody>
         {% for a in activity %}
         <tr>
-          <td style="width:28%;">
+          <td style="min-width:150px;">
             <span class="font-semi">{{ a.name }}</span>
             <span class="badge {% if a.role=='admin' %}bdg-primary{% elif a.role=='faculty' %}bdg-info{% else %}bdg-success{% endif %}" style="margin-left:4px;font-size:10px;">{{ a.role }}</span>
           </td>
-          <td>{{ a.action }}</td>
-          <td class="text-muted text-sm" style="white-space:nowrap;">{{ a.timestamp|format_datetime if a.timestamp else '' }}</td>
+          <td style="min-width:200px;">{{ a.action }}</td>
+          <td class="text-muted text-sm" style="white-space:nowrap;min-width:140px;">{{ a.timestamp|format_datetime if a.timestamp else '' }}</td>
         </tr>
         {% else %}
         <tr><td colspan="3" class="text-center text-muted" style="padding:20px;">No activity yet</td></tr>

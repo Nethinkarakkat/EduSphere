@@ -397,16 +397,39 @@ body {
 [data-theme="dark"] .ico-red    { background: #991b1b; color: #f87171; }
 
 /* ── Tables ──────────────────────────────── */
-.tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-table.tbl  { width: 100%; border-collapse: collapse; }
+/* Standardized responsive table container - used consistently across all tables */
+.responsive-table-container,
+.tbl-wrap,
+.table-responsive {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+table.tbl  {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 700px; /* Ensure table remains readable on mobile */
+}
 .tbl th {
   background: var(--table-bg); padding: 10px 16px;
   font-size: 11px; font-weight: 600; color: var(--text-secondary);
   text-transform: uppercase; letter-spacing: .04em;
   border-bottom: 1px solid var(--border-color); text-align: left;
+  white-space: nowrap; /* Prevent header wrapping */
 }
-.tbl td { padding: 12px 16px; border-bottom: 1px solid var(--border-color); font-size: 13.5px; word-wrap: break-word; overflow-wrap: break-word; }
+.tbl td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  font-size: 13.5px;
+  /* Use normal word wrapping, not character-by-character */
+  word-wrap: normal;
+  overflow-wrap: break-word;
+  white-space: normal;
+}
 .tbl tr:last-child td { border-bottom: none; }
 .tbl tr:hover td { background: var(--page-bg); }
 
@@ -416,11 +439,27 @@ table.tbl  { width: 100%; border-collapse: collapse; }
   white-space: nowrap;
 }
 
-/* Email column - ensure proper wrapping */
+/* Email column - proper wrapping at natural points */
 .tbl td.email-col,
 .tbl th.email-col {
-  word-break: break-all;
-  max-width: 300px;
+  word-break: break-word; /* Allows wrapping at natural points */
+  overflow-wrap: break-word;
+  max-width: 250px;
+}
+
+/* Action columns - prevent excessive wrapping */
+.tbl td.table-actions,
+.tbl th.table-actions {
+  white-space: nowrap;
+  min-width: 160px;
+}
+
+/* Ensure badges remain horizontal, not vertical */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* ── Badges ──────────────────────────────── */
@@ -1785,12 +1824,66 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .topbar { padding: 8px 10px; min-height: 48px; height: auto; max-height: none; }
   .mobile-menu-btn { width: 36px; height: 36px; font-size: 18px; }
   
-  /* Tables: Horizontal scroll allowed */
-  .table-responsive { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -10px; padding: 0 10px; }
-  table { font-size: 12px; min-width: 600px; }
-  th, td { padding: 8px 6px; white-space: nowrap; }
-  .table-actions { min-width: 70px; }
-  .table-actions .btn { padding: 6px 10px; font-size: 12px; min-height: 32px; width: auto; }
+  /* Tables: Horizontal scroll allowed - maintain readability */
+  .table-responsive,
+  .tbl-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    margin: 0 -12px;
+    padding: 0 12px;
+    width: calc(100% + 24px);
+    max-width: calc(100% + 24px);
+  }
+
+  table {
+    min-width: 700px; /* Ensure table remains readable */
+    width: auto;
+    max-width: none;
+    font-size: 13px; /* Keep readable font size */
+  }
+
+  th, td {
+    padding: 10px 12px; /* Maintain readable padding */
+    white-space: normal; /* Allow natural wrapping */
+  }
+
+  /* Headers should not wrap character-by-character */
+  th {
+    white-space: nowrap;
+  }
+
+  /* Use normal word wrapping for cell content */
+  td {
+    word-wrap: normal;
+    overflow-wrap: break-word;
+  }
+
+  /* Email column - wrap at natural points */
+  .email-col {
+    word-break: break-word;
+    max-width: 200px;
+  }
+
+  /* Action columns - prevent wrapping */
+  .table-actions {
+    white-space: nowrap;
+    min-width: 160px;
+  }
+
+  .table-actions .btn {
+    padding: 6px 10px;
+    font-size: 12px;
+    min-height: 36px;
+    width: auto;
+  }
+
+  /* Ensure badges remain horizontal on mobile */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
   
   /* Forms: Reduce spacing */
   .form-group { margin-bottom: 10px; }
@@ -2097,8 +2190,9 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .stats-card .stats-value { font-size: 20px; }
   .stats-card .stats-label { font-size: 10px; }
   
-  /* Tables: Responsive container */
-  .table-responsive {
+  /* Tables: Responsive container - maintain readability */
+  .table-responsive,
+  .tbl-wrap {
     display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -2107,10 +2201,51 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     width: calc(100% + 24px);
     max-width: calc(100% + 24px);
   }
-  .table-responsive table {
-    min-width: 600px;
+
+  .table-responsive table,
+  .tbl-wrap table {
+    min-width: 700px; /* Ensure table remains readable */
     width: auto;
     max-width: none;
+  }
+
+  /* Maintain readable table structure on mobile */
+  .table-responsive table th,
+  .tbl-wrap table th {
+    white-space: nowrap; /* Headers don't wrap */
+    padding: 10px 12px;
+    font-size: 12px;
+  }
+
+  .table-responsive table td,
+  .tbl-wrap table td {
+    padding: 10px 12px;
+    font-size: 13px;
+    word-wrap: normal; /* Natural word wrapping */
+    overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  /* Email column - natural wrapping only */
+  .table-responsive table .email-col,
+  .tbl-wrap table .email-col {
+    word-break: break-word;
+    max-width: 200px;
+  }
+
+  /* Action columns - no wrapping */
+  .table-responsive table .table-actions,
+  .tbl-wrap table .table-actions {
+    white-space: nowrap;
+    min-width: 160px;
+  }
+
+  /* Ensure badges remain horizontal on mobile */
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
   
   /* Forms: Single column, full width */
@@ -2292,6 +2427,105 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     width: 100%;
     max-width: 100%;
     min-width: 0;
+  }
+  
+  /* Mobile card layouts for overview sections */
+  .mobile-overview-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .mobile-overview-item {
+    background: var(--page-bg);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-sm);
+    padding: 12px;
+  }
+  
+  .mobile-overview-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+  }
+  
+  .mobile-overview-avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: var(--primary-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--primary);
+    flex-shrink: 0;
+  }
+  
+  .mobile-overview-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  
+  .mobile-overview-email {
+    font-size: 12px;
+    color: var(--text-secondary);
+    word-break: break-word;
+  }
+  
+  .mobile-overview-stats {
+    display: flex;
+    gap: 16px;
+    margin-top: 8px;
+  }
+  
+  .mobile-overview-stat {
+    flex: 1;
+  }
+  
+  .mobile-overview-stat-label {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin-bottom: 2px;
+  }
+  
+  .mobile-overview-stat-value {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text-primary);
+  }
+  
+  /* Hide desktop tables on mobile, show mobile cards */
+  .desktop-table {
+    display: none;
+  }
+  
+  .mobile-cards {
+    display: block;
+  }
+  
+  /* Classroom grid responsive */
+  .classroom-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  
+  /* Hide mobile cards on desktop */
+  @media (min-width: 768px) {
+    .desktop-table {
+      display: table;
+    }
+    .mobile-cards {
+      display: none;
+    }
+    
+    .classroom-grid {
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    }
   }
 }
 

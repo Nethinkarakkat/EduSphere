@@ -8,7 +8,7 @@
 {% block content %}
 
 {% if rooms %}
-<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;">
+<div class="classroom-grid">
   {% for r in rooms %}
   <div class="card" style="transition:box-shadow .2s,transform .2s;"
        onmouseover="this.style.boxShadow='var(--shadow)';this.style.transform='translateY(-2px)';"

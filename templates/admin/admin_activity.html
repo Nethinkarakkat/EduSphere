@@ -46,8 +46,8 @@
     <span class="badge bdg-gray">{{ logs|length }} records</span>
   </div>
   {% if logs %}
-  <div class="tbl-wrap"><table class="tbl">
-    <thead><tr><th>User</th><th>Role</th><th>Action</th><th>Time</th></tr></thead>
+  <div class="responsive-table-container"><table class="tbl">
+    <thead><tr><th>User</th><th>Role</th><th>Action</th><th class="date-col">Time</th></tr></thead>
     <tbody>
       {% for l in logs %}
       <tr>
@@ -58,7 +58,7 @@
           {% else %}<span class="badge bdg-success">Student</span>{% endif %}
         </td>
         <td>{{ l.action }}</td>
-        <td class="text-muted text-sm">{{ l.timestamp|format_datetime if l.timestamp else '—' }}</td>
+        <td class="text-muted text-sm date-col">{{ l.timestamp|format_datetime if l.timestamp else '—' }}</td>
       </tr>
       {% endfor %}
     </tbody>
