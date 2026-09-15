@@ -1742,7 +1742,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .sb-footer { display: none; }
   
   /* Main content: Adjust for icon sidebar */
-  .main { margin-left: 70px; }
+  .main { margin-left: 70px; width: calc(100% - 70px); max-width: calc(100% - 70px); }
   
   /* Dashboard: 2 cards per row */
   .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -2028,8 +2028,13 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .sb-avatar { width: 52px; height: 52px; min-width: 52px; min-height: 52px; }
   .sb-logout { padding: 12px; font-size: 14px; }
   
-  /* Main content: Full width */
-  .main { margin-left: 0; }
+  /* Main content: Full width, properly constrained */
+  .main { 
+    margin-left: 0; 
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
   
   /* Topbar: Add hamburger button. height/max-height reset - the base
      .topbar has a hard height:96px/max-height:96px cap that would clip
@@ -2042,16 +2047,19 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     flex-wrap: wrap;
     row-gap: 8px;
     justify-content: space-between;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
   .topbar-left {
     flex: 1 1 auto;
-    min-width: 140px;
+    min-width: 0;
     display: flex;
     align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
-  .topbar-left h1 { font-size: 16px; margin: 0; white-space: normal; overflow-wrap: break-word; }
+  .topbar-left h1 { font-size: 16px; margin: 0; white-space: normal; overflow-wrap: break-word; min-width: 0; }
 
   /* Page header actions (e.g. "Users" / "Add User" on Admin Dashboard):
      compact buttons docked to the right of the header, on the same row
@@ -2069,6 +2077,8 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     justify-content: flex-end;
     align-items: center;
     gap: 6px;
+    max-width: 100%;
+    min-width: 0;
   }
   .topbar-right .btn {
     width: auto;
@@ -2076,6 +2086,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     padding: 8px 12px;
     font-size: 12.5px;
     white-space: nowrap;
+    flex-shrink: 0;
   }
   .topbar-right #themeToggle { flex-shrink: 0; }
   
@@ -2091,10 +2102,16 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     display: block;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    margin: 0 -10px;
-    padding: 0 10px;
+    margin: 0 -12px;
+    padding: 0 12px;
+    width: calc(100% + 24px);
+    max-width: calc(100% + 24px);
   }
-  table { min-width: 600px; }
+  .table-responsive table {
+    min-width: 600px;
+    width: auto;
+    max-width: none;
+  }
   
   /* Forms: Single column, full width */
   .form-row { grid-template-columns: 1fr; }
@@ -2136,8 +2153,15 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     flex-direction: column !important;
     grid-template-columns: 1fr !important;
     align-items: stretch !important;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
-  .filter-form > * { width: 100%; }
+  .filter-form > * { 
+    width: 100%; 
+    max-width: 100%;
+    min-width: 0;
+  }
   .filter-form .btn { width: 100%; }
   .filter-grid { grid-template-columns: 1fr !important; }
   .filter-form-actions { flex-direction: column !important; width: 100%; }
@@ -2189,8 +2213,18 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .pagination { justify-content: center; flex-wrap: wrap; }
   .pagination .page-item { margin-bottom: 4px; }
   
-  /* Cards: Full width */
-  .card { margin: 0 0 16px 0; }
+  /* Cards: Full width, properly constrained */
+  .card { 
+    margin: 0 0 16px 0; 
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .card-body {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
   
   /* Typography: Reduce heading sizes */
   h1 { font-size: 22px; }
@@ -2205,6 +2239,38 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .container { padding: 0 16px; }
   .card { padding: 16px; }
   
+  /* Critical mobile width fixes */
+  .flex > *, 
+  .g-2 > *, 
+  .g-3 > *, 
+  .g-4 > *, 
+  .stats-grid > * {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+  
+  /* Page content container */
+  .page {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding: 16px;
+  }
+  
+  /* Dashboard stat cards */
+  .stat {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  
+  /* Overview sections */
+  .g-2 > .card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  
   /* Auth logo scaling */
   .auth-logo-img { width: 52px; height: 52px; }
   .auth-logo-text { font-size: 24px; font-weight: 600; }
@@ -2214,6 +2280,19 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .sb-logo { width: 52px; height: 52px; }
   .sb-brand-name { font-size: 20px; }
   .sb-brand-sub { font-size: 11px; white-space: nowrap; }
+  
+  /* Additional mobile width constraints */
+  .card-body {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  
+  .tbl-wrap {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
 }
 
 /* Small phones (≤380px) - covers 320px, 360px, 375px devices where the
@@ -2248,6 +2327,25 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     gap: 4px;
   }
   .topbar-right .btn i { font-size: 13px; }
+  
+  /* Extra width constraints for smallest phones */
+  .topbar {
+    padding: 8px 10px;
+  }
+  .page {
+    padding: 12px;
+  }
+  .card {
+    padding: 12px;
+  }
+  
+  /* Ensure no horizontal overflow at smallest widths */
+  .table-responsive {
+    margin: 0 -10px;
+    padding: 0 10px;
+    width: calc(100% + 20px);
+    max-width: calc(100% + 20px);
+  }
 }
 
 /* Hide mobile menu button on desktop and tablet */
