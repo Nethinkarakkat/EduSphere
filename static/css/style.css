@@ -1205,7 +1205,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     max-height: 10vh;
     padding: 6px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
     justify-content: center;
   }
@@ -1218,8 +1218,24 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .auth-illustration-section { display: none; }
   .auth-features { display: none; }
   .auth-footer { display: none; }
-  .auth-form-side { padding: 4px 8px; }
-  .auth-card { padding: 16px; margin: 0; }
+  .auth-form-side { padding: 12px; }
+  .auth-card {
+    padding: 16px;
+    margin: 0;
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .auth-card .form-control {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  .auth-card .btn {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
   .auth-card h2 { font-size: 18px; margin-bottom: 8px; }
   .auth-card .sub { font-size: 13px; margin-bottom: 12px; }
   .auth-card .form-group { margin-bottom: 12px; }
@@ -2561,7 +2577,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     gap: 4px;
   }
   .topbar-right .btn i { font-size: 13px; }
-  
+
   /* Extra width constraints for smallest phones */
   .topbar {
     padding: 8px 10px;
@@ -2572,13 +2588,132 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .card {
     padding: 12px;
   }
-  
+
   /* Ensure no horizontal overflow at smallest widths */
   .table-responsive {
     margin: 0 -10px;
     padding: 0 10px;
     width: calc(100% + 20px);
     max-width: calc(100% + 20px);
+  }
+
+  /* Profile avatar responsive sizing */
+  .avatar-container {
+    width: 180px;
+    height: 180px;
+  }
+
+  /* Comprehensive mobile form fixes */
+  .form-control {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .form-group {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+
+  .form-row {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .filter-form {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .filter-form > * {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* Mobile modal fixes */
+  .modal-content {
+    width: 95%;
+    max-width: 95%;
+    margin: 0 auto;
+    box-sizing: border-box;
+  }
+
+  .modal-dialog {
+    width: 95%;
+    max-width: 95%;
+    margin: 10px auto;
+  }
+
+  /* Mobile chart container fixes */
+  .chart-container {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    box-sizing: border-box;
+  }
+
+  .chart-container canvas {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    height: auto !important;
+  }
+
+  /* Mobile pagination fixes */
+  .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 4px;
+  }
+
+  .pagination .page-link {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Mobile badge fixes */
+  .badge {
+    font-size: 11px;
+    padding: 4px 8px;
+    white-space: nowrap;
+  }
+
+  /* Mobile button fixes */
+  .btn {
+    white-space: normal;
+    word-wrap: break-word;
+  }
+
+  .btn-sm {
+    padding: 6px 10px;
+    font-size: 12px;
+  }
+
+  /* Mobile alert fixes */
+  .alert {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    word-wrap: break-word;
+  }
+
+  /* Mobile empty state fixes */
+  .empty {
+    padding: 24px 16px;
+    text-align: center;
+  }
+
+  .empty i {
+    font-size: 32px;
+    margin-bottom: 8px;
+  }
+
+  .empty p {
+    font-size: 14px;
   }
 }
 
