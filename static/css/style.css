@@ -412,7 +412,7 @@ body {
 table.tbl  {
   width: 100%;
   border-collapse: collapse;
-  min-width: 700px; /* Ensure table remains readable on mobile */
+  min-width: 800px; /* Increased to prevent character-by-character wrapping */
 }
 .tbl th {
   background: var(--table-bg); padding: 10px 16px;
@@ -443,7 +443,7 @@ table.tbl  {
 .tbl td.email-col,
 .tbl th.email-col {
   word-break: break-word; /* Allows wrapping at natural points */
-  overflow-wrap: break-word;
+  overflow-wrap: anywhere; /* Better email wrapping on mobile */
   max-width: 250px;
 }
 
@@ -1852,38 +1852,49 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   }
 
   table {
-    min-width: 700px; /* Ensure table remains readable */
+    min-width: 800px; /* Increased to prevent character-by-character wrapping */
     width: auto;
     max-width: none;
-    font-size: 13px; /* Keep readable font size */
+    font-size: 14px; /* Increased for better readability */
   }
 
   th, td {
-    padding: 10px 12px; /* Maintain readable padding */
+    padding: 12px 14px; /* Increased padding for better touch targets */
     white-space: normal; /* Allow natural wrapping */
   }
 
   /* Headers should not wrap character-by-character */
   th {
     white-space: nowrap;
+    font-size: 13px;
   }
 
   /* Use normal word wrapping for cell content */
   td {
     word-wrap: normal;
     overflow-wrap: break-word;
+    white-space: normal;
+  }
+
+  /* Name column - natural wrapping only */
+  td:not(.email-col):not(.date-col):not(.table-actions) {
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
+    min-width: 120px;
   }
 
   /* Email column - wrap at natural points */
   .email-col {
     word-break: break-word;
-    max-width: 200px;
+    overflow-wrap: anywhere; /* Better email wrapping on mobile */
+    max-width: 250px;
   }
 
   /* Action columns - prevent wrapping */
   .table-actions {
     white-space: nowrap;
-    min-width: 160px;
+    min-width: 180px;
   }
 
   .table-actions .btn {
@@ -1899,6 +1910,8 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     align-items: center;
     white-space: nowrap;
     flex-shrink: 0;
+    font-size: 12px;
+    padding: 4px 10px;
   }
   
   /* Forms: Reduce spacing */
@@ -2220,7 +2233,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 
   .table-responsive table,
   .tbl-wrap table {
-    min-width: 700px; /* Ensure table remains readable */
+    min-width: 800px; /* Increased to prevent character-by-character wrapping */
     width: auto;
     max-width: none;
   }
@@ -2229,31 +2242,41 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .table-responsive table th,
   .tbl-wrap table th {
     white-space: nowrap; /* Headers don't wrap */
-    padding: 10px 12px;
-    font-size: 12px;
+    padding: 12px 14px;
+    font-size: 13px;
   }
 
   .table-responsive table td,
   .tbl-wrap table td {
-    padding: 10px 12px;
-    font-size: 13px;
+    padding: 12px 14px;
+    font-size: 14px;
     word-wrap: normal; /* Natural word wrapping */
     overflow-wrap: break-word;
     white-space: normal;
+  }
+
+  /* Name column - natural wrapping only */
+  .table-responsive table td:not(.email-col):not(.date-col):not(.table-actions),
+  .tbl-wrap table td:not(.email-col):not(.date-col):not(.table-actions) {
+    word-break: normal;
+    overflow-wrap: normal;
+    white-space: normal;
+    min-width: 120px;
   }
 
   /* Email column - natural wrapping only */
   .table-responsive table .email-col,
   .tbl-wrap table .email-col {
     word-break: break-word;
-    max-width: 200px;
+    overflow-wrap: anywhere; /* Better email wrapping on mobile */
+    max-width: 250px;
   }
 
   /* Action columns - no wrapping */
   .table-responsive table .table-actions,
   .tbl-wrap table .table-actions {
     white-space: nowrap;
-    min-width: 160px;
+    min-width: 180px;
   }
 
   /* Ensure badges remain horizontal on mobile */
@@ -2262,6 +2285,8 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     align-items: center;
     white-space: nowrap;
     flex-shrink: 0;
+    font-size: 12px;
+    padding: 4px 10px;
   }
   
   /* Forms: Single column, full width */
@@ -2453,7 +2478,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   }
   
   .mobile-overview-item {
-    background: var(--page-bg);
+    background: var(--card-bg);
     border: 1px solid var(--border-color);
     border-radius: var(--radius-sm);
     padding: 12px;
@@ -2490,6 +2515,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
     font-size: 12px;
     color: var(--text-secondary);
     word-break: break-word;
+    overflow-wrap: anywhere;
   }
   
   .mobile-overview-stats {
@@ -2559,7 +2585,7 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   .classroom-code-value {
     font-size: 17px;
     letter-spacing: 0.08em;
-    word-break: break-all;
+    word-break: break-word;
     overflow-wrap: break-word;
   }
   .classroom-code-card { flex-wrap: wrap; gap: 10px; }
@@ -2677,8 +2703,8 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
 
   /* Mobile badge fixes */
   .badge {
-    font-size: 11px;
-    padding: 4px 8px;
+    font-size: 12px;
+    padding: 5px 10px;
     white-space: nowrap;
   }
 
@@ -2689,8 +2715,18 @@ hr.div { border: none; border-top: 1px solid var(--border-color); margin: 18px 0
   }
 
   .btn-sm {
-    padding: 6px 10px;
-    font-size: 12px;
+    padding: 8px 12px;
+    font-size: 13px;
+  }
+
+  /* Mobile card title fixes */
+  .card-head h5 {
+    font-size: 16px;
+  }
+
+  /* Mobile form label fixes */
+  .form-label {
+    font-size: 13px;
   }
 
   /* Mobile alert fixes */
